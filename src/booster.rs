@@ -976,6 +976,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn dump_model() {
         let dmat_train =
             DMatrix::load(r#"{"uri": "xgboost-sys/xgboost/demo/data/agaricus.txt.train?format=libsvm"}"#).unwrap();

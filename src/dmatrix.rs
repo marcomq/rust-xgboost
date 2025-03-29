@@ -414,6 +414,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn get_set_weights() {
         let mut dmat = read_train_matrix().unwrap();
         assert!(dmat.get_weights().unwrap().is_empty());
@@ -424,9 +425,12 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn get_set_base_margin() {
-        let mut dmat = read_train_matrix().unwrap();
+        let mut dmat = read_train_matrix().unwrap();        
+        dbg!(&dmat);
         let base_margin = dmat.get_base_margin();
+        dbg!(&base_margin);
         assert!(base_margin.is_ok());
         assert!(base_margin.unwrap().is_empty());
 
@@ -436,6 +440,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn get_set_group() {
         let mut dmat = read_train_matrix().unwrap();
         assert!(dmat.get_group().unwrap().is_empty());

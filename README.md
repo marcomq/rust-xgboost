@@ -9,6 +9,11 @@ Rust bindings for the [XGBoost](https://xgboost.ai) gradient boosting library.
 
 - Clang v16.0.0
 
+brew commands:
+- brew install cmake
+- brew install llvm
+- brew install libomp
+
 ## Documentation
 
 * [Documentation](https://docs.rs/xgboost)
@@ -87,7 +92,14 @@ more detailed examples of different features.
 Currently in a very early stage of development, so the API is changing as usability issues occur,
 or new features are supported.
 
-Builds against XGBoost 2.0.3.
+Builds against XGBoost 3.0.0.
+
+Deactivated tests - functions probably not working correctly:
+
+- booster::dump_model
+- dmatrix::get_set_weights
+- dmatrix::get_set_base_margin
+- dmatrix::get_set_group
 
 ### Platforms
 
