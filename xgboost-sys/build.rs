@@ -21,12 +21,10 @@ fn main() {
             });
     }
 
-    let mut dst = Config::new(&xgb_root);
-    dst.define("BUILD_STATIC_LIB", "ON").define("CMAKE_CXX_STANDARD", "17");
-
     // CMake
     let mut dst = Config::new(&xgb_root);
-    let mut dst = dst.define("BUILD_STATIC_LIB", "ON");
+    let mut dst = dst.define("CMAKE_CXX_STANDARD", "17")
+        .define("BUILD_STATIC_LIB", "ON");
 
     #[cfg(feature = "cuda")]
     let mut dst = dst
@@ -36,13 +34,17 @@ fn main() {
 
     #[cfg(target_os = "macos")]
     {
-        let path = PathBuf::from("/opt/homebrew/"); // check for m1 vs intel config
+        #[cfg(target_arch = "aarch64")] 
+        let path = PathBuf::from("/opt/homebrew/"); // use folder on m1
+        #[cfg(not(target_arch = "aarch64"))] 
+        let path = PathBuf::from("/opt/include/"); // use folder on m1
         if let Ok(_dir) = std::fs::read_dir(&path) {
+            let path = path.to_str().unwrap();
             dst = dst
-                .define("CMAKE_C_COMPILER", "/opt/homebrew/opt/llvm/bin/clang")
-                .define("CMAKE_CXX_COMPILER", "/opt/homebrew/opt/llvm/bin/clang++")
-                .define("OPENMP_LIBRARIES", "/opt/homebrew/opt/llvm/lib")
-                .define("OPENMP_INCLUDES", "/opt/homebrew/opt/llvm/include");
+                .define("CMAKE_C_COMPILER", env::var("CMAKE_C_COMPILER").unwrap_or(format!("{path}opt/llvm/bin/clang")))
+                .define("CMAKE_CXX_COMPILER", env::var("CMAKE_CXX_COMPILER").unwrap_or(format!("{path}opt/llvm/bin/clang++")))
+                .define("OPENMP_LIBRARIES", env::var("OPENMP_LIBRARIES").unwrap_or(format!("{path}opt/llvm/lib")))
+                .define("OPENMP_INCLUDES", env::var("OPENMP_INCLUDES").unwrap_or(format!("{path}opt/llvm/include")));
         };
     }
     let dst = dst.build();
@@ -54,7 +56,6 @@ fn main() {
         .blocklist_item("std::__1.*")
         .clang_args(&["-x", "c++", "-std=c++17"])
         .clang_arg(format!("-I{}", xgb_root.join("include").display()))
-        .clang_arg(format!("-I{}", xgb_root.join("rabit/include").display()))
         .clang_arg(format!("-I{}", xgb_root.join("dmlc-core/include").display()));
 
     #[cfg(feature = "cuda")]
@@ -70,14 +71,16 @@ fn main() {
 
     println!("cargo:rustc-link-search={}", xgb_root.join("lib").display());
     println!("cargo:rustc-link-search={}", xgb_root.join("lib64").display());
-    println!("cargo:rustc-link-search={}", xgb_root.join("rabit/lib").display());
     println!("cargo:rustc-link-search={}", xgb_root.join("dmlc-core").display());
 
     // link to appropriate C++ lib
     if target.contains("apple") {
         println!("cargo:rustc-link-lib=c++");
-        println!("cargo:rustc-link-search=native=/opt/homebrew/opt/libomp/lib");
         println!("cargo:rustc-link-lib=dylib=omp");
+        #[cfg(target_arch = "aarch64")] 
+        println!("cargo:rustc-link-search=native=/opt/homebrew/opt/libomp/lib");
+        #[cfg(not(target_arch = "aarch64"))] 
+        println!("cargo:rustc-link-search=native=/opt/local/opt/libomp/lib");
     } else {
         println!("cargo:rustc-cxxflags=-std=c++17");
         println!("cargo:rustc-link-lib=stdc++fs");

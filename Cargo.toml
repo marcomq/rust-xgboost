@@ -20,3 +20,4 @@ indexmap = "2.7"
 
 [features]
 cuda = ["xgboost-sys/cuda"]
+# default = ["cuda"]

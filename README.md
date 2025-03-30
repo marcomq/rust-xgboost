@@ -92,6 +92,9 @@ more detailed examples of different features.
 Currently in a very early stage of development, so the API is changing as usability issues occur,
 or new features are supported.
 
+After cloning, perform `git submodule update --init --recursive`
+to install submodule dependencies.s
+
 Builds against XGBoost 3.0.0.
 
 Deactivated tests - functions probably not working correctly:
