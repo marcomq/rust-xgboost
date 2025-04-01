@@ -23,8 +23,9 @@ fn main() {
 
     // CMake
     let mut dst = Config::new(&xgb_root);
-    let mut dst = dst.define("CMAKE_CXX_STANDARD", "17")
-        .define("BUILD_STATIC_LIB", "ON");
+    let mut dst = dst.define("CMAKE_CXX_STANDARD", "17");
+    #[cfg(not(target_os = "macos"))]
+    let mut dst = dst.define("BUILD_STATIC_LIB", "ON");
 
     #[cfg(feature = "cuda")]
     let mut dst = dst
@@ -34,7 +35,7 @@ fn main() {
 
     #[cfg(target_os = "macos")]
     {
-        #[cfg(target_arch = "aarch64")] 
+        #[cfg(target_arch = "aarch64")]
         let path = PathBuf::from("/opt/homebrew/"); // use folder on m1
         #[cfg(not(target_arch = "aarch64"))] 
         let path = PathBuf::from("/opt/include/"); // use folder on m1
@@ -42,9 +43,11 @@ fn main() {
             let path = path.to_str().unwrap();
             dst = dst
                 .define("CMAKE_C_COMPILER", env::var("CMAKE_C_COMPILER").unwrap_or(format!("{path}opt/llvm/bin/clang")))
-                .define("CMAKE_CXX_COMPILER", env::var("CMAKE_CXX_COMPILER").unwrap_or(format!("{path}opt/llvm/bin/clang++")))
-                .define("OPENMP_LIBRARIES", env::var("OPENMP_LIBRARIES").unwrap_or(format!("{path}opt/llvm/lib")))
-                .define("OPENMP_INCLUDES", env::var("OPENMP_INCLUDES").unwrap_or(format!("{path}opt/llvm/include")));
+                .define("CMAKE_CXX_COMPILER", env::var("CMAKE_CXX_COMPILER").unwrap_or(format!("{path}opt/llvm/bin/clang++")));
+                // .define("OPENMP_LIBRARIES", env::var("OPENMP_LIBRARIES").unwrap_or(format!("{path}opt/llvm/lib")))
+                // .define("OPENMP_INCLUDES", env::var("OPENMP_INCLUDES").unwrap_or(format!("{path}opt/llvm/include")));
+                // .define("__OpenMP_LIBRARY_DIR", env::var("__OpenMP_LIBRARY_DIR").unwrap_or(format!("{path}opt/llvm/lib")))
+                // .define("__OpenMP_LIBRARY_DIR", env::var("__OpenMP_LIBRARY_LOCATION").unwrap_or(format!("{path}opt/llvm/include")));
         };
     }
     let dst = dst.build();
@@ -91,8 +94,14 @@ fn main() {
     println!("cargo:rustc-link-search=native={}", dst.display());
     println!("cargo:rustc-link-search=native={}", dst.join("lib").display());
     println!("cargo:rustc-link-search=native={}", dst.join("lib64").display());
-    println!("cargo:rustc-link-lib=static=dmlc");
-    println!("cargo:rustc-link-lib=static=xgboost");
+    if target.contains("apple") {
+        println!("cargo:rustc-link-lib=dylib=dmlc");
+        println!("cargo:rustc-link-lib=dylib=xgboost");
+    } else {
+        println!("cargo:rustc-link-lib=static=dmlc");
+        println!("cargo:rustc-link-lib=static=xgboost");
+    }
+
 
     #[cfg(feature = "cuda")]
     {

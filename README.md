@@ -100,6 +100,11 @@ Builds against XGBoost 3.0.0.
 Deactivated tests - functions probably not working correctly:
 
 - booster::dump_model
+- dmatrix::read_matrix
+- dmatrix::read_num_rows
+- dmatrix::read_num_cols
+- dmatrix::writing_and_reading
+- dmatrix::get_set_labels
 - dmatrix::get_set_weights
 - dmatrix::get_set_base_margin
 - dmatrix::get_set_group
