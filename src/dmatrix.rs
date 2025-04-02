@@ -370,25 +370,21 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn read_matrix() {
         assert!(read_train_matrix().is_ok());
     }
 
     #[test]
-    #[ignore]
     fn read_num_rows() {
         assert_eq!(read_train_matrix().unwrap().num_rows(), 6513);
     }
 
     #[test]
-    #[ignore]
     fn read_num_cols() {
         assert_eq!(read_train_matrix().unwrap().num_cols(), 127);
     }
 
     #[test]
-    #[ignore]
     fn writing_and_reading() {
         let dmat = read_train_matrix().unwrap();
 
@@ -404,7 +400,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn get_set_labels() {
         let mut dmat = read_train_matrix().unwrap();
         let labels = dmat.get_labels();
@@ -432,7 +427,7 @@ mod tests {
     #[test]
     #[ignore]
     fn get_set_base_margin() {
-        let mut dmat = read_train_matrix().unwrap();        
+        let mut dmat = read_train_matrix().unwrap();
         dbg!(&dmat);
         let base_margin = dmat.get_base_margin();
         dbg!(&base_margin);
