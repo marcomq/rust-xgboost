@@ -5,12 +5,15 @@
 
 Rust bindings for the [XGBoost](https://xgboost.ai) gradient boosting library.
 
+Creates a shared library and uses Ninja instead of makefiles as generator.
+
 ## Requirements
 
 - Clang v16.0.0
 
-brew commands:
+brew commands for MacOs:
 - brew install cmake
+- brew install ninja
 - brew install llvm
 - brew install libomp
 
@@ -92,7 +95,7 @@ more detailed examples of different features.
 Currently in a very early stage of development, so the API is changing as usability issues occur,
 or new features are supported.
 
-After cloning, perform `git submodule update --init --recursive`
+If you build it locally, after cloning, perform `git submodule update --init --recursive`
 to install submodule dependencies.s
 
 Builds against XGBoost 3.0.0.
@@ -100,22 +103,17 @@ Builds against XGBoost 3.0.0.
 Deactivated tests - functions probably not working correctly:
 
 - booster::dump_model
-- dmatrix::read_matrix
-- dmatrix::read_num_rows
-- dmatrix::read_num_cols
-- dmatrix::writing_and_reading
-- dmatrix::get_set_labels
-- dmatrix::get_set_weights
 - dmatrix::get_set_base_margin
 - dmatrix::get_set_group
+- dmatrix::get_set_weights
 
 ### Platforms
 
 Tested:
 
-* Linux
 * Mac OS
 
-Unsupported:
+Untested:
 
+* Linux
 * Windows

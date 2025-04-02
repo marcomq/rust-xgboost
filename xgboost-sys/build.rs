@@ -1,7 +1,6 @@
 extern crate bindgen;
 extern crate cmake;
 
-use cmake::Config;
 use std::env;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -20,38 +19,6 @@ fn main() {
                 panic!("Failed to copy ./xgboost to {}: {}", xgb_root.display(), e);
             });
     }
-
-    // CMake
-    let mut dst = Config::new(&xgb_root);
-    let mut dst = dst.define("CMAKE_CXX_STANDARD", "17");
-    #[cfg(not(target_os = "macos"))]
-    let mut dst = dst.define("BUILD_STATIC_LIB", "ON");
-
-    #[cfg(feature = "cuda")]
-    let mut dst = dst
-        .define("USE_CUDA", "ON")
-        .define("BUILD_WITH_CUDA", "ON")
-        .define("BUILD_WITH_CUDA_CUB", "ON");
-
-    #[cfg(target_os = "macos")]
-    {
-        #[cfg(target_arch = "aarch64")]
-        let path = PathBuf::from("/opt/homebrew/"); // use folder on m1
-        #[cfg(not(target_arch = "aarch64"))] 
-        let path = PathBuf::from("/opt/include/"); // use folder on m1
-        if let Ok(_dir) = std::fs::read_dir(&path) {
-            let path = path.to_str().unwrap();
-            dst = dst
-                .define("CMAKE_C_COMPILER", env::var("CMAKE_C_COMPILER").unwrap_or(format!("{path}opt/llvm/bin/clang")))
-                .define("CMAKE_CXX_COMPILER", env::var("CMAKE_CXX_COMPILER").unwrap_or(format!("{path}opt/llvm/bin/clang++")));
-                // .define("OPENMP_LIBRARIES", env::var("OPENMP_LIBRARIES").unwrap_or(format!("{path}opt/llvm/lib")))
-                // .define("OPENMP_INCLUDES", env::var("OPENMP_INCLUDES").unwrap_or(format!("{path}opt/llvm/include")));
-                // .define("__OpenMP_LIBRARY_DIR", env::var("__OpenMP_LIBRARY_DIR").unwrap_or(format!("{path}opt/llvm/lib")))
-                // .define("__OpenMP_LIBRARY_DIR", env::var("__OpenMP_LIBRARY_LOCATION").unwrap_or(format!("{path}opt/llvm/include")));
-        };
-    }
-    let dst = dst.build();
-
     let xgb_root = xgb_root.canonicalize().unwrap();
 
     let bindings = bindgen::Builder::default()
@@ -71,6 +38,20 @@ fn main() {
     bindings
         .write_to_file(out_path.join("bindings.rs"))
         .expect("Couldn't write bindings.");
+
+
+    // CMake
+    let mut dst = cmake::Config::new(&xgb_root);
+    let dst = dst.generator("Ninja");
+    let dst = dst.define("CMAKE_BUILD_TYPE", "RelWithDebInfo");
+
+    #[cfg(feature = "cuda")]
+    let mut dst = dst
+        .define("USE_CUDA", "ON")
+        .define("BUILD_WITH_CUDA", "ON")
+        .define("BUILD_WITH_CUDA_CUB", "ON");
+    
+    let dst = dst.build();
 
     println!("cargo:rustc-link-search={}", xgb_root.join("lib").display());
     println!("cargo:rustc-link-search={}", xgb_root.join("lib64").display());
@@ -94,14 +75,8 @@ fn main() {
     println!("cargo:rustc-link-search=native={}", dst.display());
     println!("cargo:rustc-link-search=native={}", dst.join("lib").display());
     println!("cargo:rustc-link-search=native={}", dst.join("lib64").display());
-    if target.contains("apple") {
-        println!("cargo:rustc-link-lib=dylib=dmlc");
-        println!("cargo:rustc-link-lib=dylib=xgboost");
-    } else {
-        println!("cargo:rustc-link-lib=static=dmlc");
-        println!("cargo:rustc-link-lib=static=xgboost");
-    }
-
+    println!("cargo:rustc-link-lib=static=dmlc");
+    println!("cargo:rustc-link-lib=dylib=xgboost");
 
     #[cfg(feature = "cuda")]
     {
