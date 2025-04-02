@@ -20,13 +20,11 @@ fn main() {
             });
     }
     let xgb_root = xgb_root.canonicalize().unwrap();
-
+    let header = xgb_root.join("include").join("xgboost").join("c_api.h");
     let bindings = bindgen::Builder::default()
-        .header("wrapper.h")
-        // .blocklist_item("std::__1.*")
-        // .clang_args(&["-x", "c++", "-std=c++17"])
+        .header(header.to_string_lossy())
         .clang_arg(format!("-I{}", xgb_root.join("include").display()))
-        .clang_arg(format!("-I{}", xgb_root.join("dmlc-core/include").display()));
+        .clang_arg(format!("-I{}", xgb_root.join("dmlc-core").join("include").display()));
 
     #[cfg(feature = "cuda")]
     let bindings = bindings.clang_arg("-I/usr/local/cuda/include");

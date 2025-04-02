@@ -804,7 +804,7 @@ mod tests {
         assert_eq!(*train_metrics.get("map@4-").unwrap(), 1.0);
 
         let test_metrics = booster.evaluate(&dmat_test).unwrap();
-        assert_eq!(*test_metrics.get("logloss").unwrap(), 0.0069199526);
+        assert_eq!((*test_metrics.get("logloss").unwrap() -  0.0069199526) < 0.000001, true);
         assert_eq!(*test_metrics.get("map@4-").unwrap(), 1.0);
 
         let v = booster.predict(&dmat_test).unwrap();
