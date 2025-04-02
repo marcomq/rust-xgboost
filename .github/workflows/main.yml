@@ -6,11 +6,8 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-    strategy:
-      matrix: 
-        os: [ ubuntu-latest, macos-latest, windows-latest ]
-    runs-on: ${{ matrix.os }}
+  linux:
+    runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v4
@@ -22,3 +19,35 @@ jobs:
 
     - name: Run tests
       run: cargo test --verbose
+      
+  macos:
+    runs-on: macos-latest
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        
+    - name: Install dependencies
+      run: brew install ninja libomp
+
+    - name: Build
+      run: cargo build --verbose
+
+    - name: Run tests
+      run: cargo test --verbose
+      
+  windows:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Build
+      run: cargo build --verbose
+
+    - name: Run tests
+      run: cargo test --verbose
+      
