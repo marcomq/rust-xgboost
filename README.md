@@ -1,7 +1,7 @@
 # rust-xgboost
 
-[![Travis Build Status](https://travis-ci.com/davechallis/rust-xgboost.svg?branch=master)](https://travis-ci.com/davechallis/rust-xgboost)
-[![Documentation link](https://docs.rs/xgboost/badge.svg)](https://docs.rs/xgboost/badge.svg)
+This is mostly a fork of https://github.com/davechallis/rust-xgboost but uses 
+another xgboost version and links it dynamically instead of linkit it static as the original library.
 
 Rust bindings for the [XGBoost](https://xgboost.ai) gradient boosting library.
 
@@ -112,8 +112,8 @@ Deactivated tests - functions probably not working correctly:
 Tested:
 
 * Mac OS
+* Linux
 
 Untested:
 
-* Linux
 * Windows
