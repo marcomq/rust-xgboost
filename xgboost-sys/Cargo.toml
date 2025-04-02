@@ -1,7 +1,7 @@
 [package]
 name = "xgboost_lib-sys"
 version = "3.0.0"
-authors = ["Dave Challis <dave@suicas.net>"]
+authors = ["Dave Challis <dave@suicas.net>", "Marco Mengelkoch"]
 links = "xgboost"
 build = "build.rs"
 license = "MIT"
