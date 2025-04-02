@@ -1,10 +1,10 @@
-extern crate xgboost;
+extern crate xgb;
 extern crate sprs;
 extern crate env_logger;
 
 use std::io::{BufRead, BufReader};
 use std::fs::File;
-use xgboost::{parameters, DMatrix, Booster};
+use xgb::{parameters, DMatrix, Booster};
 
 fn main() {
     // initialise logging, run with e.g. RUST_LOG=xgboost=debug to see more details

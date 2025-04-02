@@ -9,9 +9,9 @@
 //! # Basic usage example
 //!
 //! ```
-//! extern crate xgboost;
+//! extern crate xgb;
 //!
-//! use xgboost::{parameters, DMatrix, Booster};
+//! use xgb::{parameters, DMatrix, Booster};
 //!
 //! fn main() {
 //!     // training matrix with 5 training examples and 3 features

@@ -1,10 +1,10 @@
 //! Example of how to fit a generalised linear model in XGBoost.
 
-extern crate xgboost;
+extern crate xgb;
 extern crate ndarray;
 extern crate env_logger;
 
-use xgboost::{parameters, DMatrix, Booster};
+use xgb::{parameters, DMatrix, Booster};
 
 fn main() {
     // initialise logging, run with e.g. RUST_LOG=xgboost=debug to see more details

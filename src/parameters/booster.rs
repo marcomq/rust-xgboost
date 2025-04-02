@@ -3,9 +3,9 @@
 //! # Example
 //!
 //! ```
-//! use xgboost::parameters::BoosterParametersBuilder;
-//! use xgboost::parameters::BoosterType;
-//! use xgboost::parameters::tree::TreeBoosterParametersBuilder;
+//! use xgb::parameters::BoosterParametersBuilder;
+//! use xgb::parameters::BoosterType;
+//! use xgb::parameters::tree::TreeBoosterParametersBuilder;
 //!
 //! let tree_params = TreeBoosterParametersBuilder::default()
 //!     .eta(0.2)
