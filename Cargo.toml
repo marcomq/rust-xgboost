@@ -1,5 +1,5 @@
 [package]
-name = "xgboost"
+name = "xgboost_lib"
 version = "3.0.0"
 authors = ["Dave Challis <dave@suicas.net>", "Marco Mengelkoch"]
 license = "MIT"
