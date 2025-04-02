@@ -23,8 +23,8 @@ fn main() {
 
     let bindings = bindgen::Builder::default()
         .header("wrapper.h")
-        .blocklist_item("std::__1.*")
-        .clang_args(&["-x", "c++", "-std=c++17"])
+        // .blocklist_item("std::__1.*")
+        // .clang_args(&["-x", "c++", "-std=c++17"])
         .clang_arg(format!("-I{}", xgb_root.join("include").display()))
         .clang_arg(format!("-I{}", xgb_root.join("dmlc-core/include").display()));
 
@@ -66,7 +66,7 @@ fn main() {
         #[cfg(not(target_arch = "aarch64"))] 
         println!("cargo:rustc-link-search=native=/opt/local/opt/libomp/lib");
     } else {
-        println!("cargo:rustc-cxxflags=-std=c++17");
+        // println!("cargo:rustc-cxxflags=-std=c++17");
         println!("cargo:rustc-link-lib=stdc++fs");
         println!("cargo:rustc-link-lib=stdc++");
         println!("cargo:rustc-link-lib=dylib=gomp");
