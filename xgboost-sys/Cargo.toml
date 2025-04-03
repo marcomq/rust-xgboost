@@ -18,4 +18,5 @@ bindgen = "0.71"
 cmake = "0.1"
 
 [features]
+use_prebuilt_xgb = []
 cuda = []

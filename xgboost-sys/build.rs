@@ -3,23 +3,12 @@ extern crate cmake;
 
 use std::env;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 fn main() {
     let target = env::var("TARGET").unwrap();
     let out_dir = env::var("OUT_DIR").unwrap();
-    let xgb_root = Path::new(&out_dir).join("xgboost");
+    let xgb_root = Path::new("xgboost").canonicalize().unwrap();
 
-    // copy source code into OUT_DIR for compilation if it doesn't exist
-    if !xgb_root.exists() {
-        Command::new("cp")
-            .args(&["-r", "xgboost", xgb_root.to_str().unwrap()])
-            .status()
-            .unwrap_or_else(|e| {
-                panic!("Failed to copy ./xgboost to {}: {}", xgb_root.display(), e);
-            });
-    }
-    let xgb_root = xgb_root.canonicalize().unwrap();
     let header = xgb_root.join("include").join("xgboost").join("c_api.h");
     let bindings = bindgen::Builder::default()
         .header(header.to_string_lossy())
@@ -32,48 +21,90 @@ fn main() {
         .generate()
         .expect("Unable to generate bindings.");
 
-    let out_path = PathBuf::from(out_dir);
+    let out_path = PathBuf::from(&out_dir);
     bindings
         .write_to_file(out_path.join("bindings.rs"))
         .expect("Couldn't write bindings.");
 
 
-    // CMake
-    let mut dst = cmake::Config::new(&xgb_root);
-    let dst = dst.generator("Ninja");
-    let dst = dst.define("CMAKE_BUILD_TYPE", "RelWithDebInfo");
+    #[allow(unused_mut)]
+    let mut homebrew_path = "/opt/homebrew";
+    #[cfg(not(target_arch = "aarch64"))] {
+        homebrew_path = "/opt/local";
+    }
+    if target.contains("apple") {
+        println!("cargo:rustc-link-search=native={}/opt/libomp/lib", &homebrew_path);
+    }
 
-    #[cfg(feature = "cuda")]
-    let mut dst = dst
-        .define("USE_CUDA", "ON")
-        .define("BUILD_WITH_CUDA", "ON")
-        .define("BUILD_WITH_CUDA_CUB", "ON");
-    
-    let dst = dst.build();
+    #[cfg(feature = "use_prebuilt_xgb")] {
+        let xgboost_lib_dir = std::env::var("XGBOOST_LIB_DIR").unwrap_or_else(|_err| {
+            if target.contains("apple") {
+                format!("{}/opt/xgboost/lib", &homebrew_path)
+            } else {
+                #[allow(unused_mut)]
+                let mut pip_show = String::from(""); 
+                #[cfg(target_os = "linux")] {
+                    pip_show = String::from_utf8(std::process::Command::new("sh").arg("-c").arg("python3 -m pip show xgboost").output().expect("Please install xgboost via pip or set $XGBOOST_LIB_DIR").stdout).expect("sh output not utf8")
+                };
+                #[cfg(target_os = "windows")] {
+                    pip_show = String::from_utf8(std::process::Command::new("cmd").arg("/C").arg("python3 -m pip show xgboost").output().expect("Please install xgboost via pip or set $XGBOOST_LIB_DIR").stdout).expect("cmd output not utf8");
+                }
+                for line in pip_show.lines() {
+                    if line.starts_with("Location: ") {
+                        return line.replace("Location: ", "");
+                    }
+                }
+                panic!("Please set $XGBOOST_LIB_DIR or install xgboost via pip");
+            }});
+        println!("cargo:rustc-link-search=native={}", xgboost_lib_dir);
+    }
 
-    println!("cargo:rustc-link-search={}", xgb_root.join("lib").display());
-    println!("cargo:rustc-link-search={}", xgb_root.join("lib64").display());
-    println!("cargo:rustc-link-search={}", xgb_root.join("dmlc-core").display());
+    #[cfg(not(feature = "use_prebuilt_xgb"))] {
+        // compile XGBOOST with cmake and ninja
+        let xgb_root = Path::new(&out_dir).join("xgboost");
+
+        // copy source code into OUT_DIR for compilation if it doesn't exist
+        if !xgb_root.exists() {
+            std::process::Command::new("cp")
+                .args(&["-r", "xgboost", xgb_root.to_str().unwrap()])
+                .status()
+                .unwrap_or_else(|e| {
+                    panic!("Failed to copy ./xgboost to {}: {}", xgb_root.display(), e);
+                });
+        }
+        let xgb_root = xgb_root.canonicalize().unwrap();
+
+        // CMake
+        let mut dst = cmake::Config::new(&xgb_root);
+        let dst = dst.generator("Ninja");
+        let dst = dst.define("CMAKE_BUILD_TYPE", "RelWithDebInfo");
+
+        #[cfg(feature = "cuda")]
+        let mut dst = dst
+            .define("USE_CUDA", "ON")
+            .define("BUILD_WITH_CUDA", "ON")
+            .define("BUILD_WITH_CUDA_CUB", "ON");
+        
+        let dst = dst.build();
+        println!("cargo:rustc-link-search={}", xgb_root.join("lib").display());
+        println!("cargo:rustc-link-search={}", xgb_root.join("lib64").display());
+        println!("cargo:rustc-link-search={}", xgb_root.join("dmlc-core").display());
+        println!("cargo:rustc-link-search=native={}", dst.display());
+        println!("cargo:rustc-link-search=native={}", dst.join("lib").display());
+        println!("cargo:rustc-link-search=native={}", dst.join("lib64").display());
+        println!("cargo:rustc-link-lib=static=dmlc");
+    }
 
     // link to appropriate C++ lib
     if target.contains("apple") {
         println!("cargo:rustc-link-lib=c++");
         println!("cargo:rustc-link-lib=dylib=omp");
-        #[cfg(target_arch = "aarch64")] 
-        println!("cargo:rustc-link-search=native=/opt/homebrew/opt/libomp/lib");
-        #[cfg(not(target_arch = "aarch64"))] 
-        println!("cargo:rustc-link-search=native=/opt/local/opt/libomp/lib");
     } else {
-        // println!("cargo:rustc-cxxflags=-std=c++17");
-        println!("cargo:rustc-link-lib=stdc++fs");
         println!("cargo:rustc-link-lib=stdc++");
+        println!("cargo:rustc-link-lib=stdc++fs");
         println!("cargo:rustc-link-lib=dylib=gomp");
     }
 
-    println!("cargo:rustc-link-search=native={}", dst.display());
-    println!("cargo:rustc-link-search=native={}", dst.join("lib").display());
-    println!("cargo:rustc-link-search=native={}", dst.join("lib64").display());
-    println!("cargo:rustc-link-lib=static=dmlc");
     println!("cargo:rustc-link-lib=dylib=xgboost");
 
     #[cfg(feature = "cuda")]

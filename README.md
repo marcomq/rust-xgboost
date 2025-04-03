@@ -9,13 +9,19 @@ Creates a shared library and uses Ninja instead of makefiles as generator.
 
 ## Requirements
 
-- Clang v16.0.0
+It is highly recommended to use the `use_prebuilt_xgb` feature, which is enabled by default.
+It will use an already installed xgboost library from homebrew or pip. 
 
 brew commands for MacOs:
+
+with use_prebuilt_lib:
+- brew install xgboost
+
+compile yourself:
+- brew install libomp
 - brew install cmake
 - brew install ninja
 - brew install llvm
-- brew install libomp
 
 ## Documentation
 
@@ -107,13 +113,26 @@ Deactivated tests - functions probably not working correctly:
 - dmatrix::get_set_group
 - dmatrix::get_set_weights
 
+## Use prebuilt xgboost library
+
+Xgboost is kind of complicated to compile, especially when there is GPU support involved.
+It is sometimes easier to use a pre-build library.
+The feature flag `use_prebuilt_xgb` is enabled by default.
+This will use the version installed in `$XGBOOST_LIB_DIR`. If it isn't set, it will use `homebrew` on MacOs and the one from `python3 -m pip info xgboost` on Windows and Linux.
+
+
+If you want to compile xgboost by yourself, you can disable the default feature:
+```
+xgb = { version = "3.0.0", default-features = false }
+```
+
 ### Platforms
 
-Tested:
+Tested, prebuilt and locally compiled:
 
-* Mac OS
+* Mac OS 
 * Linux
 
-Untested:
+Tested, prebuilt only:
 
 * Windows

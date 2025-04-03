@@ -13,6 +13,9 @@ jobs:
     - uses: actions/checkout@v4
       with:
         submodules: recursive
+        
+    - name: Install dependencies
+      run: python3 -m pip install --break-system-package xgboost
 
     - name: Build
       run: cargo build --verbose
@@ -29,7 +32,7 @@ jobs:
         submodules: recursive
         
     - name: Install dependencies
-      run: brew install ninja libomp
+      run: brew install xgboost
 
     - name: Build
       run: cargo build --verbose
@@ -44,6 +47,9 @@ jobs:
     - uses: actions/checkout@v4
       with:
         submodules: recursive
+
+    - name: Install dependencies
+      run: python3 -m pip install --break-system-package xgboost
 
     - name: Build
       run: cargo build --verbose

@@ -316,7 +316,7 @@ impl DMatrix {
         if out_len > 0 {
             Ok(unsafe { slice::from_raw_parts(out_dptr as *mut c_float, out_len as usize) })
         } else {
-            Err(XGBError::new("error"))
+            Err(XGBError::new("error: out len <= 0"))
         }
     }
 
