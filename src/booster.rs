@@ -2,10 +2,6 @@ use crate::dmatrix::DMatrix;
 use crate::error::XGBError;
 use std::collections::{BTreeMap, HashMap};
 use std::io::{self, BufRead, BufReader, Write};
-#[cfg(not(target_os = "windows"))]
-use std::os::unix::ffi::OsStrExt;
-#[cfg(target_os = "windows")]
-use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::{ffi, fmt, fs::File, ptr, slice};
