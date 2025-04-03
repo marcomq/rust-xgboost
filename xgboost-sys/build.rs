@@ -17,37 +17,54 @@ fn main() {
 
     #[cfg(feature = "cuda")]
     let bindings = bindings.clang_arg("-I/usr/local/cuda/include");
-    let bindings = bindings
-        .generate()
-        .expect("Unable to generate bindings.");
+    let bindings = bindings.generate().expect("Unable to generate bindings.");
 
     let out_path = PathBuf::from(&out_dir);
     bindings
         .write_to_file(out_path.join("bindings.rs"))
         .expect("Couldn't write bindings.");
 
-
     #[allow(unused_mut)]
     let mut homebrew_path = "/opt/homebrew";
-    #[cfg(not(target_arch = "aarch64"))] {
+    #[cfg(not(target_arch = "aarch64"))]
+    {
         homebrew_path = "/opt/local";
     }
     if target.contains("apple") {
         println!("cargo:rustc-link-search=native={}/opt/libomp/lib", &homebrew_path);
     }
 
-    #[cfg(feature = "use_prebuilt_xgb")] {
+    #[cfg(feature = "use_prebuilt_xgb")]
+    {
         let xgboost_lib_dir = std::env::var("XGBOOST_LIB_DIR").unwrap_or_else(|_err| {
             if target.contains("apple") {
                 format!("{}/opt/xgboost/lib", &homebrew_path)
             } else {
                 #[allow(unused_mut)]
-                let mut pip_show = String::from(""); 
-                #[cfg(target_os = "linux")] {
-                    pip_show = String::from_utf8(std::process::Command::new("sh").arg("-c").arg("python3 -m pip show xgboost").output().expect("Please install xgboost via pip or set $XGBOOST_LIB_DIR").stdout).expect("sh output not utf8")
+                let mut pip_show = String::from("");
+                #[cfg(target_os = "linux")]
+                {
+                    pip_show = String::from_utf8(
+                        std::process::Command::new("sh")
+                            .arg("-c")
+                            .arg("python3 -m pip show xgboost")
+                            .output()
+                            .expect("Please install xgboost via pip or set $XGBOOST_LIB_DIR")
+                            .stdout,
+                    )
+                    .expect("sh output not utf8")
                 };
-                #[cfg(target_os = "windows")] {
-                    pip_show = String::from_utf8(std::process::Command::new("cmd").arg("/C").arg("python3 -m pip show xgboost").output().expect("Please install xgboost via pip or set $XGBOOST_LIB_DIR").stdout).expect("cmd output not utf8");
+                #[cfg(target_os = "windows")]
+                {
+                    pip_show = String::from_utf8(
+                        std::process::Command::new("cmd")
+                            .arg("/C")
+                            .arg("python3 -m pip show xgboost")
+                            .output()
+                            .expect("Please install xgboost via pip or set $XGBOOST_LIB_DIR")
+                            .stdout,
+                    )
+                    .expect("cmd output not utf8");
                 }
                 for line in pip_show.lines() {
                     if line.starts_with("Location: ") {
@@ -55,11 +72,13 @@ fn main() {
                     }
                 }
                 panic!("Please set $XGBOOST_LIB_DIR or install xgboost via pip");
-            }});
+            }
+        });
         println!("cargo:rustc-link-search=native={}", xgboost_lib_dir);
     }
 
-    #[cfg(not(feature = "use_prebuilt_xgb"))] {
+    #[cfg(not(feature = "use_prebuilt_xgb"))]
+    {
         // compile XGBOOST with cmake and ninja
         let xgb_root = Path::new(&out_dir).join("xgboost");
 
@@ -84,7 +103,7 @@ fn main() {
             .define("USE_CUDA", "ON")
             .define("BUILD_WITH_CUDA", "ON")
             .define("BUILD_WITH_CUDA_CUB", "ON");
-        
+
         let dst = dst.build();
         println!("cargo:rustc-link-search={}", xgb_root.join("lib").display());
         println!("cargo:rustc-link-search={}", xgb_root.join("lib64").display());
