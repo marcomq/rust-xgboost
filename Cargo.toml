@@ -1,6 +1,6 @@
 [package]
 name = "xgb"
-version = "3.0.0.1"
+version = "3.0.1"
 authors = ["Dave Challis <dave@suicas.net>", "Marco Mengelkoch"]
 license = "MIT"
 repository = "https://github.com/marcomq/rust-xgboost"
