@@ -4,7 +4,6 @@ use std::os::unix::ffi::OsStrExt;
 #[cfg(target_os = "windows")]
 use std::os::windows::ffi::OsStrExt;
 use std::{ffi, path::Path, ptr, slice};
-use xgboost_sys;
 
 use super::{XGBError, XGBResult};
 

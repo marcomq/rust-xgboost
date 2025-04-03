@@ -16,12 +16,13 @@ pub enum SampleType {
     Weighted,
 }
 
-impl ToString for SampleType {
-    fn to_string(&self) -> String {
-        match *self {
+impl std::fmt::Display for SampleType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let result = match *self {
             SampleType::Uniform => "uniform".to_owned(),
             SampleType::Weighted => "weighted".to_owned(),
-        }
+        };
+        write!(f, "{}", result)
     }
 }
 
@@ -30,7 +31,7 @@ impl ToString for SampleType {
 pub enum NormalizeType {
     /// New trees have the same weight of each of dropped trees.
     /// * weight of new trees are 1 / (k + learning_rate)
-    /// dropped trees are scaled by a factor of k / (k + learning_rate)
+    /// * dropped trees are scaled by a factor of k / (k + learning_rate)
     #[default]
     Tree,
 
@@ -41,12 +42,13 @@ pub enum NormalizeType {
     Forest,
 }
 
-impl ToString for NormalizeType {
-    fn to_string(&self) -> String {
-        match *self {
+impl std::fmt::Display for NormalizeType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let result = match *self {
             NormalizeType::Tree => "tree".to_owned(),
             NormalizeType::Forest => "forest".to_owned(),
-        }
+        };
+        write!(f, "{}", result)
     }
 }
 

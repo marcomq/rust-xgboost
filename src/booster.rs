@@ -1,16 +1,16 @@
 use crate::dmatrix::DMatrix;
 use crate::error::XGBError;
-use libc;
 use std::collections::{BTreeMap, HashMap};
 use std::io::{self, BufRead, BufReader, Write};
+#[cfg(not(target_os = "windows"))]
 use std::os::unix::ffi::OsStrExt;
+#[cfg(target_os = "windows")]
+use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::{ffi, fmt, fs::File, ptr, slice};
 
 use indexmap::IndexMap;
-use tempfile;
-use xgboost_sys;
 
 use super::XGBResult;
 use crate::parameters::{BoosterParameters, TrainingParameters};
@@ -390,15 +390,18 @@ impl Booster {
         let field: ffi::CString = ffi::CString::new(field).unwrap();
 
         // We want zero terminated strings
-        let c_temp_features: Vec<ffi::CString> = features.into_iter().map(|s| ffi::CString::new(*s).unwrap()).collect();
+        let c_temp_features: Vec<ffi::CString> = features.iter().map(|s| ffi::CString::new(*s).unwrap()).collect();
 
-        let mut c_feature_ptr: Vec<*const i8> =
-            c_temp_features.into_iter().map(|s| s.into_raw() as *const i8).collect();
+        #[cfg(not(target_os = "linux"))]
+        type Ptr8b = *const i8;
+        #[cfg(target_os = "linux")]
+        type Ptr8b = *const u8;
+        let mut c_feature_ptr: Vec<Ptr8b> = c_temp_features.into_iter().map(|s| s.into_raw() as Ptr8b).collect();
 
         xgb_call!(xgboost_sys::XGBoosterSetStrFeatureInfo(
             self.handle,
             field.as_ptr(),
-            c_feature_ptr.as_mut_ptr(),
+            c_feature_ptr.as_mut_ptr() as *mut Ptr8b,
             features.len() as u64
         ))
     }

@@ -14,12 +14,13 @@ pub enum LinearUpdate {
     CoordDescent,
 }
 
-impl ToString for LinearUpdate {
-    fn to_string(&self) -> String {
-        match *self {
+impl std::fmt::Display for LinearUpdate {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let result = match *self {
             LinearUpdate::Shotgun => "shotgun".to_owned(),
             LinearUpdate::CoordDescent => "coord_descent".to_owned(),
-        }
+        };
+        write!(f, "{}", result)
     }
 }
 
