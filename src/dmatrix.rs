@@ -170,17 +170,6 @@ impl DMatrix {
         DMatrix::new(handle)
     }
 
-    #[cfg(not(target_os = "windows"))]
-    fn c_str_path<P: AsRef<Path>>(path: P) -> ffi::CString {
-        use std::os::unix::ffi::OsStrExt;
-        ffi::CString::new(path.as_ref().as_os_str().as_bytes()).unwrap()
-    }
-    #[cfg(target_os = "windows")]
-    fn c_str_path<P: AsRef<Path>>(path: P) -> ffi::CString {
-        use std::os::windows::ffi::OsStrExt;
-        ffi::CString::new(path.as_ref().as_os_str().as_encoded_bytes()).unwrap()
-    }
-
     /// Create a new `DMatrix` from given file.
     ///
     /// Supports text files in [LIBSVM](https://www.csie.ntu.edu.tw/~cjlin/libsvm/) format, CSV,
@@ -206,7 +195,7 @@ impl DMatrix {
     pub fn load<P: AsRef<Path>>(path: P) -> XGBResult<Self> {
         debug!("Loading DMatrix from: {}", path.as_ref().display());
         let mut handle = ptr::null_mut();
-        let fname = Self::c_str_path(path);
+        let fname = crate::path_to_c_str(path);
         xgb_call!(xgboost_sys::XGDMatrixCreateFromURI(fname.as_ptr(), &mut handle))?;
         DMatrix::new(handle)
     }
@@ -214,7 +203,7 @@ impl DMatrix {
     pub fn load_binary<P: AsRef<Path>>(path: P) -> XGBResult<Self> {
         debug!("Loading DMatrix from: {}", path.as_ref().display());
         let mut handle = ptr::null_mut();
-        let fname = Self::c_str_path(path);
+        let fname = crate::path_to_c_str(path);
         xgb_call!(xgboost_sys::XGDMatrixCreateFromFile(fname.as_ptr(), 1, &mut handle)).unwrap();
         DMatrix::new(handle)
     }
@@ -222,7 +211,7 @@ impl DMatrix {
     /// Serialise this `DMatrix` as a binary file to given path.
     pub fn save<P: AsRef<Path>>(&self, path: P) -> XGBResult<()> {
         debug!("Writing DMatrix to: {}", path.as_ref().display());
-        let fname = Self::c_str_path(path);
+        let fname: ffi::CString = crate::path_to_c_str(path);
         let silent = true;
         xgb_call!(xgboost_sys::XGDMatrixSaveBinary(
             self.handle,

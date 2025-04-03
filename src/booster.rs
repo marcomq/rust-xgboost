@@ -90,7 +90,7 @@ impl Booster {
     /// Save this Booster as a binary file at given path.
     pub fn save<P: AsRef<Path>>(&self, path: P) -> XGBResult<()> {
         debug!("Writing Booster to: {}", path.as_ref().display());
-        let fname = ffi::CString::new(path.as_ref().as_os_str().as_bytes()).unwrap();
+        let fname = crate::path_to_c_str(path);
         xgb_call!(xgboost_sys::XGBoosterSaveModel(self.handle, fname.as_ptr()))
     }
 
@@ -103,7 +103,7 @@ impl Booster {
             return Err(XGBError::new(format!("File not found: {}", path.as_ref().display())));
         }
 
-        let fname = ffi::CString::new(path.as_ref().as_os_str().as_bytes()).unwrap();
+        let fname = crate::path_to_c_str(path);
         let mut handle = ptr::null_mut();
         xgb_call!(xgboost_sys::XGBoosterCreate(ptr::null(), 0, &mut handle))?;
         xgb_call!(xgboost_sys::XGBoosterLoadModel(handle, fname.as_ptr()))?;
@@ -563,7 +563,7 @@ impl Booster {
 
     fn dump_model_fmap(&self, with_statistics: bool, feature_map_path: Option<&PathBuf>) -> XGBResult<String> {
         let fmap = if let Some(path) = feature_map_path {
-            ffi::CString::new(path.as_os_str().as_bytes()).unwrap()
+            crate::path_to_c_str(path)
         } else {
             ffi::CString::new("").unwrap()
         };
