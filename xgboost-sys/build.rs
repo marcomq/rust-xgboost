@@ -55,7 +55,7 @@ fn main() {
                     .expect("sh output not utf8")
                 };
                 #[cfg(target_os = "windows")]
-                {
+                {   
                     pip_show = String::from_utf8(
                         std::process::Command::new("cmd")
                             .arg("/C")
@@ -68,7 +68,16 @@ fn main() {
                 }
                 for line in pip_show.lines() {
                     if line.starts_with("Location: ") {
-                        return format!("{}/xgboost/lib", &line.replace("Location: ", ""));
+                        let base_path = &line.replace("Location: ", "");
+                        let xgboost_path = format!("{}/xgboost/lib", &base_path);
+                        let deps_path = Path::new(&format!("{}/../../../deps", out_dir)).canonicalize().unwrap();
+                        dbg!(&deps_path);
+
+                        std::process::Command::new("cp")
+                            .args(&["-r", &format!("{}/xgboost.libs/.", &base_path), &deps_path.to_str().unwrap()]).status().unwrap();
+                        std::process::Command::new("cp")
+                            .args(&["-r", &format!("{}/xgboost/lib/.", &base_path), &deps_path.to_str().unwrap()]).status().unwrap();
+                        return xgboost_path;
                     }
                 }
                 panic!("Please set $XGBOOST_LIB_DIR or install xgboost via pip");
@@ -105,9 +114,7 @@ fn main() {
             .define("BUILD_WITH_CUDA_CUB", "ON");
 
         let dst = dst.build();
-        println!("cargo:rustc-link-search={}", xgb_root.join("lib").display());
-        println!("cargo:rustc-link-search={}", xgb_root.join("lib64").display());
-        println!("cargo:rustc-link-search={}", xgb_root.join("dmlc-core").display());
+        
         println!("cargo:rustc-link-search=native={}", dst.display());
         println!("cargo:rustc-link-search=native={}", dst.join("lib").display());
         println!("cargo:rustc-link-search=native={}", dst.join("lib64").display());
