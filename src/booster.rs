@@ -352,7 +352,6 @@ impl Booster {
         }
     }
 
-
     /// Get names of feature names stored in this model.
     pub fn get_feature_names(&self) -> XGBResult<Vec<String>> {
         self.get_feature_info("feature_name")
@@ -363,7 +362,12 @@ impl Booster {
         let mut out_len = 0;
         let mut out = ptr::null_mut();
         let field: ffi::CString = ffi::CString::new(field).unwrap();
-        xgb_call!(xgboost_sys::XGBoosterGetStrFeatureInfo(self.handle, field.as_ptr(), &mut out_len, &mut out))?;
+        xgb_call!(xgboost_sys::XGBoosterGetStrFeatureInfo(
+            self.handle,
+            field.as_ptr(),
+            &mut out_len,
+            &mut out
+        ))?;
         if out_len > 0 {
             let out_ptr_slice = unsafe { slice::from_raw_parts(out, out_len as usize) };
             let out_vec = out_ptr_slice
@@ -382,21 +386,21 @@ impl Booster {
     }
 
     /// Set names of features stored in this model.
-    pub fn set_feature_info(&self, field: &str,  features: &Vec<&str>) -> XGBResult<()> {
+    pub fn set_feature_info(&self, field: &str, features: &Vec<&str>) -> XGBResult<()> {
         let field: ffi::CString = ffi::CString::new(field).unwrap();
 
         // We want zero terminated strings
-        let c_temp_features: Vec<ffi::CString> = features
-            .into_iter()
-            .map(|s| ffi::CString::new(*s).unwrap())
-            .collect();
+        let c_temp_features: Vec<ffi::CString> = features.into_iter().map(|s| ffi::CString::new(*s).unwrap()).collect();
 
-        let mut c_feature_ptr: Vec<*const i8> = c_temp_features
-            .into_iter()
-            .map(|s| s.into_raw()as *const i8)
-            .collect();
+        let mut c_feature_ptr: Vec<*const i8> =
+            c_temp_features.into_iter().map(|s| s.into_raw() as *const i8).collect();
 
-        xgb_call!(xgboost_sys::XGBoosterSetStrFeatureInfo(self.handle, field.as_ptr(), c_feature_ptr.as_mut_ptr(), features.len() as u64))
+        xgb_call!(xgboost_sys::XGBoosterSetStrFeatureInfo(
+            self.handle,
+            field.as_ptr(),
+            c_feature_ptr.as_mut_ptr(),
+            features.len() as u64
+        ))
     }
 
     /// Predict results for given data.
@@ -864,7 +868,7 @@ mod tests {
         assert_eq!(*train_metrics.get("map@4-").unwrap(), 1.0);
 
         let test_metrics = booster.evaluate(&dmat_test).unwrap();
-        let diff = *test_metrics.get("logloss").unwrap() -  0.0069199526;
+        let diff = *test_metrics.get("logloss").unwrap() - 0.0069199526;
         assert_eq!(diff < 0.000001, diff > -0.000001);
         assert_eq!(*test_metrics.get("map@4-").unwrap(), 1.0);
 
