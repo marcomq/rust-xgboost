@@ -51,7 +51,7 @@ fn main() {
                 }
                 for line in pip_show.lines() {
                     if line.starts_with("Location: ") {
-                        return line.replace("Location: ", "");
+                        return format!("{}/xgboost/lib", &line.replace("Location: ", ""));
                     }
                 }
                 panic!("Please set $XGBOOST_LIB_DIR or install xgboost via pip");
