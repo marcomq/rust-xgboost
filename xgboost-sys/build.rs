@@ -126,9 +126,11 @@ fn main() {
         println!("cargo:rustc-link-lib=c++");
         println!("cargo:rustc-link-lib=dylib=omp");
     } else {
-        println!("cargo:rustc-link-lib=stdc++");
-        println!("cargo:rustc-link-lib=stdc++fs");
-        println!("cargo:rustc-link-lib=dylib=gomp");
+        #[cfg(target_os = "linux")]{
+            println!("cargo:rustc-link-lib=stdc++");
+            println!("cargo:rustc-link-lib=stdc++fs");
+            println!("cargo:rustc-link-lib=dylib=gomp");
+        }
     }
 
     println!("cargo:rustc-link-lib=dylib=xgboost");
