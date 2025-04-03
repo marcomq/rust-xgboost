@@ -391,17 +391,13 @@ impl Booster {
 
         // We want zero terminated strings
         let c_temp_features: Vec<ffi::CString> = features.iter().map(|s| ffi::CString::new(*s).unwrap()).collect();
-
-        #[cfg(not(target_os = "linux"))]
-        type Ptr8b = *const i8;
-        #[cfg(target_os = "linux")]
-        type Ptr8b = *const u8;
-        let mut c_feature_ptr: Vec<Ptr8b> = c_temp_features.into_iter().map(|s| s.into_raw() as Ptr8b).collect();
+        use ::std::os::raw;
+        let mut c_feature_ptr: Vec<*const raw::c_char> = c_temp_features.into_iter().map(|s| s.into_raw() as *const raw::c_char).collect();
 
         xgb_call!(xgboost_sys::XGBoosterSetStrFeatureInfo(
             self.handle,
             field.as_ptr(),
-            c_feature_ptr.as_mut_ptr() as *mut Ptr8b,
+            c_feature_ptr.as_mut_ptr() as *mut *const raw::c_char,
             features.len() as u64
         ))
     }
