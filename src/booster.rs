@@ -1,16 +1,12 @@
 use crate::dmatrix::DMatrix;
 use crate::error::XGBError;
-use libc;
 use std::collections::{BTreeMap, HashMap};
 use std::io::{self, BufRead, BufReader, Write};
-use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::{ffi, fmt, fs::File, ptr, slice};
 
 use indexmap::IndexMap;
-use tempfile;
-use xgboost_sys;
 
 use super::XGBResult;
 use crate::parameters::{BoosterParameters, TrainingParameters};
@@ -90,7 +86,7 @@ impl Booster {
     /// Save this Booster as a binary file at given path.
     pub fn save<P: AsRef<Path>>(&self, path: P) -> XGBResult<()> {
         debug!("Writing Booster to: {}", path.as_ref().display());
-        let fname = ffi::CString::new(path.as_ref().as_os_str().as_bytes()).unwrap();
+        let fname = crate::path_to_c_str(path);
         xgb_call!(xgboost_sys::XGBoosterSaveModel(self.handle, fname.as_ptr()))
     }
 
@@ -103,7 +99,7 @@ impl Booster {
             return Err(XGBError::new(format!("File not found: {}", path.as_ref().display())));
         }
 
-        let fname = ffi::CString::new(path.as_ref().as_os_str().as_bytes()).unwrap();
+        let fname = crate::path_to_c_str(path);
         let mut handle = ptr::null_mut();
         xgb_call!(xgboost_sys::XGBoosterCreate(ptr::null(), 0, &mut handle))?;
         xgb_call!(xgboost_sys::XGBoosterLoadModel(handle, fname.as_ptr()))?;
@@ -352,7 +348,6 @@ impl Booster {
         }
     }
 
-
     /// Get names of feature names stored in this model.
     pub fn get_feature_names(&self) -> XGBResult<Vec<String>> {
         self.get_feature_info("feature_name")
@@ -363,7 +358,12 @@ impl Booster {
         let mut out_len = 0;
         let mut out = ptr::null_mut();
         let field: ffi::CString = ffi::CString::new(field).unwrap();
-        xgb_call!(xgboost_sys::XGBoosterGetStrFeatureInfo(self.handle, field.as_ptr(), &mut out_len, &mut out))?;
+        xgb_call!(xgboost_sys::XGBoosterGetStrFeatureInfo(
+            self.handle,
+            field.as_ptr(),
+            &mut out_len,
+            &mut out
+        ))?;
         if out_len > 0 {
             let out_ptr_slice = unsafe { slice::from_raw_parts(out, out_len as usize) };
             let out_vec = out_ptr_slice
@@ -382,21 +382,20 @@ impl Booster {
     }
 
     /// Set names of features stored in this model.
-    pub fn set_feature_info(&self, field: &str,  features: &Vec<&str>) -> XGBResult<()> {
+    pub fn set_feature_info(&self, field: &str, features: &Vec<&str>) -> XGBResult<()> {
         let field: ffi::CString = ffi::CString::new(field).unwrap();
 
         // We want zero terminated strings
-        let c_temp_features: Vec<ffi::CString> = features
-            .into_iter()
-            .map(|s| ffi::CString::new(*s).unwrap())
-            .collect();
+        let c_temp_features: Vec<ffi::CString> = features.iter().map(|s| ffi::CString::new(*s).unwrap()).collect();
+        use ::std::os::raw;
+        let mut c_feature_ptr: Vec<*const raw::c_char> = c_temp_features.into_iter().map(|s| s.into_raw() as *const raw::c_char).collect();
 
-        let mut c_feature_ptr: Vec<*const i8> = c_temp_features
-            .into_iter()
-            .map(|s| s.into_raw()as *const i8)
-            .collect();
-
-        xgb_call!(xgboost_sys::XGBoosterSetStrFeatureInfo(self.handle, field.as_ptr(), c_feature_ptr.as_mut_ptr(), features.len() as u64))
+        xgb_call!(xgboost_sys::XGBoosterSetStrFeatureInfo(
+            self.handle,
+            field.as_ptr(),
+            c_feature_ptr.as_mut_ptr() as *mut *const raw::c_char,
+            features.len() as u64
+        ))
     }
 
     /// Predict results for given data.
@@ -560,7 +559,7 @@ impl Booster {
 
     fn dump_model_fmap(&self, with_statistics: bool, feature_map_path: Option<&PathBuf>) -> XGBResult<String> {
         let fmap = if let Some(path) = feature_map_path {
-            ffi::CString::new(path.as_os_str().as_bytes()).unwrap()
+            crate::path_to_c_str(path)
         } else {
             ffi::CString::new("").unwrap()
         };
@@ -864,7 +863,7 @@ mod tests {
         assert_eq!(*train_metrics.get("map@4-").unwrap(), 1.0);
 
         let test_metrics = booster.evaluate(&dmat_test).unwrap();
-        let diff = *test_metrics.get("logloss").unwrap() -  0.0069199526;
+        let diff = *test_metrics.get("logloss").unwrap() - 0.0069199526;
         assert_eq!(diff < 0.000001, diff > -0.000001);
         assert_eq!(*test_metrics.get("map@4-").unwrap(), 1.0);
 

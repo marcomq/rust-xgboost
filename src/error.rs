@@ -1,11 +1,8 @@
 //! Functionality related to errors and error handling.
 
-use std;
 use std::error::Error;
 use std::ffi::CStr;
 use std::fmt::{self, Display};
-
-use xgboost_sys;
 
 /// Convenience return type for most operations which can return an `XGBError`.
 pub type XGBResult<T> = std::result::Result<T, XGBError>;

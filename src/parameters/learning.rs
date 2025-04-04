@@ -78,9 +78,10 @@ impl Clone for Objective {
     }
 }
 
-impl ToString for Objective {
-    fn to_string(&self) -> String {
-        match *self {
+
+impl std::fmt::Display for Objective {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let result = match *self {
             Objective::RegLinear => "reg:squarederror".to_owned(),
             Objective::RegLogistic => "reg:logistic".to_owned(),
             Objective::BinaryLogistic => "binary:logistic".to_owned(),
@@ -96,7 +97,8 @@ impl ToString for Objective {
             Objective::RankPairwise => "rank:pairwise".to_owned(),
             Objective::RegGamma => "reg:gamma".to_owned(),
             Objective::RegTweedie(_) => "reg:tweedie".to_owned(),
-        }
+        };
+        write!(f, "{}", result)
     }
 }
 
@@ -179,14 +181,14 @@ pub enum EvaluationMetric {
     TweedieLogLoss,
 }
 
-impl ToString for EvaluationMetric {
-    fn to_string(&self) -> String {
-        match *self {
+impl std::fmt::Display for EvaluationMetric {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let result = match *self {
             EvaluationMetric::RMSE => "rmse".to_owned(),
             EvaluationMetric::MAE => "mae".to_owned(),
             EvaluationMetric::LogLoss => "logloss".to_owned(),
             EvaluationMetric::BinaryErrorRate(t) => {
-                if (t - 0.5).abs() < std::f32::EPSILON {
+                if (t - 0.5).abs() < f32::EPSILON {
                     "error".to_owned()
                 } else {
                     format!("error@{}", t)
@@ -208,7 +210,8 @@ impl ToString for EvaluationMetric {
             EvaluationMetric::CoxLogLoss => "cox-nloglik".to_owned(),
             EvaluationMetric::GammaDeviance => "gamma-deviance".to_owned(),
             EvaluationMetric::TweedieLogLoss => "tweedie-nloglik".to_owned(),
-        }
+        };
+        write!(f, "{}", result)
     }
 }
 

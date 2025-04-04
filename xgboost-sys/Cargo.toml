@@ -1,6 +1,6 @@
 [package]
 name = "xgboost_lib-sys"
-version = "3.0.0"
+version = "3.0.1"
 authors = ["Dave Challis <dave@suicas.net>", "Marco Mengelkoch"]
 links = "xgboost"
 build = "build.rs"
@@ -18,4 +18,5 @@ bindgen = "0.71"
 cmake = "0.1"
 
 [features]
+use_prebuilt_xgb = []
 cuda = []

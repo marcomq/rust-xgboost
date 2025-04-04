@@ -1,7 +1,5 @@
 use libc::{c_float, c_uint};
-use std::os::unix::ffi::OsStrExt;
 use std::{ffi, path::Path, ptr, slice};
-use xgboost_sys;
 
 use super::{XGBError, XGBResult};
 
@@ -197,7 +195,7 @@ impl DMatrix {
     pub fn load<P: AsRef<Path>>(path: P) -> XGBResult<Self> {
         debug!("Loading DMatrix from: {}", path.as_ref().display());
         let mut handle = ptr::null_mut();
-        let fname = ffi::CString::new(path.as_ref().as_os_str().as_bytes()).unwrap();
+        let fname = crate::path_to_c_str(path);
         xgb_call!(xgboost_sys::XGDMatrixCreateFromURI(fname.as_ptr(), &mut handle))?;
         DMatrix::new(handle)
     }
@@ -205,7 +203,7 @@ impl DMatrix {
     pub fn load_binary<P: AsRef<Path>>(path: P) -> XGBResult<Self> {
         debug!("Loading DMatrix from: {}", path.as_ref().display());
         let mut handle = ptr::null_mut();
-        let fname = ffi::CString::new(path.as_ref().as_os_str().as_bytes()).unwrap();
+        let fname = crate::path_to_c_str(path);
         xgb_call!(xgboost_sys::XGDMatrixCreateFromFile(fname.as_ptr(), 1, &mut handle)).unwrap();
         DMatrix::new(handle)
     }
@@ -213,7 +211,7 @@ impl DMatrix {
     /// Serialise this `DMatrix` as a binary file to given path.
     pub fn save<P: AsRef<Path>>(&self, path: P) -> XGBResult<()> {
         debug!("Writing DMatrix to: {}", path.as_ref().display());
-        let fname = ffi::CString::new(path.as_ref().as_os_str().as_bytes()).unwrap();
+        let fname: ffi::CString = crate::path_to_c_str(path);
         let silent = true;
         xgb_call!(xgboost_sys::XGDMatrixSaveBinary(
             self.handle,
@@ -316,7 +314,7 @@ impl DMatrix {
         if out_len > 0 {
             Ok(unsafe { slice::from_raw_parts(out_dptr as *mut c_float, out_len as usize) })
         } else {
-            Err(XGBError::new("error"))
+            Err(XGBError::new("error: out len <= 0"))
         }
     }
 

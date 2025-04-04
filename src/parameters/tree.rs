@@ -37,16 +37,17 @@ pub enum TreeMethod {
     GpuHist,
 }
 
-impl ToString for TreeMethod {
-    fn to_string(&self) -> String {
-        match *self {
+impl std::fmt::Display for TreeMethod {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let result = match *self {
             TreeMethod::Auto => "auto".to_owned(),
             TreeMethod::Exact => "exact".to_owned(),
             TreeMethod::Approx => "approx".to_owned(),
             TreeMethod::Hist => "hist".to_owned(),
             TreeMethod::GpuExact => "gpu_exact".to_owned(),
             TreeMethod::GpuHist => "gpu_hist".to_owned(),
-        }
+        };
+        write!(f, "{}", result)
     }
 }
 
@@ -101,9 +102,9 @@ pub enum TreeUpdater {
     Prune,
 }
 
-impl ToString for TreeUpdater {
-    fn to_string(&self) -> String {
-        match *self {
+impl std::fmt::Display for TreeUpdater {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let result = match *self {
             TreeUpdater::GrowColMaker => "grow_colmaker".to_owned(),
             TreeUpdater::DistCol => "distcol".to_owned(),
             TreeUpdater::GrowHistMaker => "grow_histmaker".to_owned(),
@@ -112,7 +113,8 @@ impl ToString for TreeUpdater {
             TreeUpdater::Sync => "sync".to_owned(),
             TreeUpdater::Refresh => "refresh".to_owned(),
             TreeUpdater::Prune => "prune".to_owned(),
-        }
+        };
+        write!(f, "{}", result)
     }
 }
 
@@ -132,12 +134,13 @@ pub enum ProcessType {
     Update,
 }
 
-impl ToString for ProcessType {
-    fn to_string(&self) -> String {
-        match *self {
+impl std::fmt::Display for ProcessType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let result = match *self {
             ProcessType::Default => "default".to_owned(),
             ProcessType::Update => "update".to_owned(),
-        }
+        };
+        write!(f, "{}", result)
     }
 }
 
@@ -152,12 +155,13 @@ pub enum GrowPolicy {
     LossGuide,
 }
 
-impl ToString for GrowPolicy {
-    fn to_string(&self) -> String {
-        match *self {
+impl std::fmt::Display for GrowPolicy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let result = match *self {
             GrowPolicy::Depthwise => "depthwise".to_owned(),
             GrowPolicy::LossGuide => "lossguide".to_owned(),
-        }
+        };
+        write!(f, "{}", result)
     }
 }
 
@@ -172,12 +176,13 @@ pub enum Predictor {
     Gpu,
 }
 
-impl ToString for Predictor {
-    fn to_string(&self) -> String {
-        match *self {
+impl std::fmt::Display for Predictor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let result = match *self {
             Predictor::Cpu => "cpu_predictor".to_owned(),
             Predictor::Gpu => "gpu_predictor".to_owned(),
-        }
+        };
+        write!(f, "{}", result)
     }
 }
 
