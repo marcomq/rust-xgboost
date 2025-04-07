@@ -89,6 +89,5 @@ pub fn path_to_c_str<P: AsRef<Path>>(path: P) -> ffi::CString {
 }
 #[cfg(target_os = "windows")]
 pub fn path_to_c_str<P: AsRef<Path>>(path: P) -> ffi::CString {
-    use std::os::windows::ffi::OsStrExt;
     ffi::CString::new(path.as_ref().as_os_str().as_encoded_bytes()).unwrap()
 }

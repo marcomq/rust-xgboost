@@ -1,5 +1,5 @@
-extern crate bindgen;
-extern crate cmake;
+use bindgen;
+use fs_extra;
 
 use std::env;
 use std::path::{Path, PathBuf};
@@ -40,11 +40,12 @@ fn main() {
             if target.contains("apple") {
                 format!("{}/opt/xgboost/lib", &homebrew_path)
             } else {
-                #[allow(unused_mut)]
-                let mut pip_show = String::from("");
+                let pip_result: String;
+                let xgboost_lib: &str;
                 #[cfg(target_os = "linux")]
                 {
-                    pip_show = String::from_utf8(
+                    xgboost_lib = "libxgboost.so";
+                    pip_result = String::from_utf8(
                         std::process::Command::new("sh")
                             .arg("-c")
                             .arg("python3 -m pip show xgboost")
@@ -54,9 +55,10 @@ fn main() {
                     )
                     .expect("sh output not utf8")
                 };
-                #[cfg(target_os = "windows")]
-                {   
-                    pip_show = String::from_utf8(
+                #[cfg(not(target_os = "linux"))]
+                {
+                    xgboost_lib = "xgboost.dll";
+                    pip_result = String::from_utf8(
                         std::process::Command::new("cmd")
                             .arg("/C")
                             .arg("python3 -m pip show xgboost")
@@ -66,17 +68,53 @@ fn main() {
                     )
                     .expect("cmd output not utf8");
                 }
-                for line in pip_show.lines() {
+                for line in pip_result.lines() {
                     if line.starts_with("Location: ") {
                         let base_path = &line.replace("Location: ", "");
                         let xgboost_path = format!("{}/xgboost/lib", &base_path);
-                        let deps_path = Path::new(&format!("{}/../../../deps", out_dir)).canonicalize().unwrap();
-                        dbg!(&deps_path);
+                        let deps_path = dunce::canonicalize(Path::new(&format!("{}/../../../deps", &out_dir))).unwrap();
+                        let deps_path = deps_path.to_str().unwrap();
+                        fs_extra::file::copy(
+                            &format!("{}/{}", &xgboost_path, &xgboost_lib),
+                            &format!("{}/{}", &deps_path, &xgboost_lib),
+                            &fs_extra::file::CopyOptions::new().overwrite(true),
+                        )
+                        .unwrap();
 
+                        #[cfg(target_os = "windows")]
+                        {
+                            println!("cargo:rustc-link-search=native={}", &deps_path);
+                            std::process::Command::new("gendef")
+                                .args(&["xgboost.dll"])
+                                .status()
+                                .unwrap();
+                            std::process::Command::new("cmd")
+                                .args(&[
+                                    "lib",
+                                    &format!("/def:{}/xgboost.def", &deps_path),
+                                    "/machine:x64",
+                                    &format!("/out:{}/xgboost.lib", &deps_path),
+                                ])
+                                .status()
+                                .unwrap();
+                        }
+                        // cmd:
+                        /*
+                        PROBLEM: LIBPATH !!!
+                        gendef xgboost.dll
+                        lib /def:xgboost.def /machine:x64 /out:xgboost.lib
+                         */
+
+                        #[cfg(target_os = "linux")]
                         std::process::Command::new("cp")
-                            .args(&["-r", &format!("{}/xgboost.libs/.", &base_path), &deps_path.to_str().unwrap()]).status().unwrap();
-                        std::process::Command::new("cp")
-                            .args(&["-r", &format!("{}/xgboost/lib/.", &base_path), &deps_path.to_str().unwrap()]).status().unwrap();
+                            .args(&[
+                                "-r",
+                                &format!("{}/xgboost/lib/.", &base_path),
+                                &deps_path.to_str().unwrap(),
+                            ])
+                            .status()
+                            .unwrap();
+
                         return xgboost_path;
                     }
                 }
@@ -93,12 +131,16 @@ fn main() {
 
         // copy source code into OUT_DIR for compilation if it doesn't exist
         if !xgb_root.exists() {
-            std::process::Command::new("cp")
-                .args(&["-r", "xgboost", xgb_root.to_str().unwrap()])
-                .status()
-                .unwrap_or_else(|e| {
-                    panic!("Failed to copy ./xgboost to {}: {}", xgb_root.display(), e);
-                });
+            std::fs::create_dir(&xgb_root).unwrap();
+            let xgb_lib = Path::new("xgboost").canonicalize().unwrap();
+            fs_extra::dir::copy(
+                xgb_lib.to_str().unwrap(),
+                xgb_root.to_str().unwrap(),
+                &fs_extra::dir::CopyOptions::new(),
+            )
+            .unwrap_or_else(|e| {
+                panic!("Failed to copy {} to {}: {}", xgb_lib.display(), xgb_root.display(), e);
+            });
         }
         let xgb_root = xgb_root.canonicalize().unwrap();
 
@@ -114,7 +156,7 @@ fn main() {
             .define("BUILD_WITH_CUDA_CUB", "ON");
 
         let dst = dst.build();
-        
+
         println!("cargo:rustc-link-search=native={}", dst.display());
         println!("cargo:rustc-link-search=native={}", dst.join("lib").display());
         println!("cargo:rustc-link-search=native={}", dst.join("lib64").display());
@@ -126,7 +168,8 @@ fn main() {
         println!("cargo:rustc-link-lib=c++");
         println!("cargo:rustc-link-lib=dylib=omp");
     } else {
-        #[cfg(target_os = "linux")]{
+        #[cfg(target_os = "linux")]
+        {
             println!("cargo:rustc-link-lib=stdc++");
             println!("cargo:rustc-link-lib=stdc++fs");
             println!("cargo:rustc-link-lib=dylib=gomp");
