@@ -1,6 +1,4 @@
 use bindgen;
-use fs_extra;
-
 use std::env;
 use std::path::{Path, PathBuf};
 
@@ -9,9 +7,9 @@ fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
     let xgb_root = Path::new("xgboost").canonicalize().unwrap();
 
-    let header = xgb_root.join("include").join("xgboost").join("c_api.h");
+    let wrapper_h = xgb_root.join("include").join("xgboost").join("c_api.h");
     let bindings = bindgen::Builder::default()
-        .header(header.to_string_lossy())
+        .header(wrapper_h.to_string_lossy())
         .clang_arg(format!("-I{}", xgb_root.join("include").display()))
         .clang_arg(format!("-I{}", xgb_root.join("dmlc-core").join("include").display()));
 
@@ -33,18 +31,24 @@ fn main() {
     if target.contains("apple") {
         println!("cargo:rustc-link-search=native={}/opt/libomp/lib", &homebrew_path);
     }
-
+    
     #[cfg(feature = "use_prebuilt_xgb")]
     {
+        use fs_extra;
         let xgboost_lib_dir = std::env::var("XGBOOST_LIB_DIR").unwrap_or_else(|_err| {
-            if target.contains("apple") {
+            if let Ok(homebrew_path) = std::env::var("HOMEBREW_PREFIX") {
                 format!("{}/opt/xgboost/lib", &homebrew_path)
             } else {
                 let pip_result: String;
                 let xgboost_lib: &str;
-                #[cfg(target_os = "linux")]
+                #[cfg(target_family = "unix")]
                 {
-                    xgboost_lib = "libxgboost.so";
+                    #[cfg(target_os = "linux")] {
+                        xgboost_lib = "libxgboost.so";
+                    }
+                    #[cfg(target_os = "macos")] {
+                        xgboost_lib = "libxgboost.dylib";
+                    }
                     pip_result = String::from_utf8(
                         std::process::Command::new("sh")
                             .arg("-c")
@@ -55,7 +59,7 @@ fn main() {
                     )
                     .expect("sh output not utf8")
                 };
-                #[cfg(not(target_os = "linux"))]
+                #[cfg(not(target_family = "unix"))]
                 {
                     xgboost_lib = "xgboost.dll";
                     pip_result = String::from_utf8(
@@ -83,6 +87,12 @@ fn main() {
 
                         #[cfg(target_os = "windows")]
                         {
+                            fs_extra::file::copy(
+                                &format!("{}/{}", &xgboost_path, &xgboost_lib),
+                                &format!("{}/{}", &out_dir, &xgboost_lib),
+                                &fs_extra::file::CopyOptions::new().overwrite(true),
+                            )
+                            .unwrap();
                             println!("cargo:rustc-link-search=native={}", &deps_path);
                             std::process::Command::new("gendef")
                                 .args(&["xgboost.dll"])
@@ -98,12 +108,6 @@ fn main() {
                                 .status()
                                 .unwrap();
                         }
-                        // cmd:
-                        /*
-                        PROBLEM: LIBPATH !!!
-                        gendef xgboost.dll
-                        lib /def:xgboost.def /machine:x64 /out:xgboost.lib
-                         */
 
                         #[cfg(target_os = "linux")]
                         std::process::Command::new("cp")
@@ -114,7 +118,6 @@ fn main() {
                             ])
                             .status()
                             .unwrap();
-
                         return xgboost_path;
                     }
                 }
@@ -127,22 +130,6 @@ fn main() {
     #[cfg(not(feature = "use_prebuilt_xgb"))]
     {
         // compile XGBOOST with cmake and ninja
-        let xgb_root = Path::new(&out_dir).join("xgboost");
-
-        // copy source code into OUT_DIR for compilation if it doesn't exist
-        if !xgb_root.exists() {
-            std::fs::create_dir(&xgb_root).unwrap();
-            let xgb_lib = Path::new("xgboost").canonicalize().unwrap();
-            fs_extra::dir::copy(
-                xgb_lib.to_str().unwrap(),
-                xgb_root.to_str().unwrap(),
-                &fs_extra::dir::CopyOptions::new(),
-            )
-            .unwrap_or_else(|e| {
-                panic!("Failed to copy {} to {}: {}", xgb_lib.display(), xgb_root.display(), e);
-            });
-        }
-        let xgb_root = xgb_root.canonicalize().unwrap();
 
         // CMake
         let mut dst = cmake::Config::new(&xgb_root);

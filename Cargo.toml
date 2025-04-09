@@ -21,4 +21,4 @@ indexmap = "2.7"
 [features]
 use_prebuilt_xgb = ["xgboost-sys/use_prebuilt_xgb"]
 cuda = ["xgboost-sys/cuda"]
-default = ["use_prebuilt_xgb"]
+default  = []

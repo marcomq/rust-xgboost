@@ -15,7 +15,8 @@ jobs:
         submodules: recursive
         
     - name: Install dependencies
-      run: python3 -m pip install --break-system-package xgboost
+      run: brew install xgboost
+      # run: python3 -m pip install --break-system-package xgboost
 
     - name: Build
       run: cargo build --verbose
