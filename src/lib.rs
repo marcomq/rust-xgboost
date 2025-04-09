@@ -80,7 +80,7 @@ pub use dmatrix::DMatrix;
 mod booster;
 pub use booster::{Booster, FeatureMap, FeatureType};
 pub mod parameters;
-use std::{path::Path, ffi};
+use std::{ffi, path::Path};
 
 #[cfg(not(target_os = "windows"))]
 pub fn path_to_c_str<P: AsRef<Path>>(path: P) -> ffi::CString {

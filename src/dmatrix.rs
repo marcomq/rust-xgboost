@@ -84,7 +84,7 @@ impl DMatrix {
         xgb_call!(xgboost_sys::XGDMatrixNumCol(handle, &mut out))?;
         let num_cols = out as usize;
 
-        info!("Loaded DMatrix with shape: {}x{}", num_rows, num_cols);
+        trace!("Loaded DMatrix with shape: {}x{}", num_rows, num_cols);
         Ok(DMatrix {
             handle,
             num_rows,

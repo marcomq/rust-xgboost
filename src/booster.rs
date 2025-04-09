@@ -2,6 +2,7 @@ use crate::dmatrix::DMatrix;
 use crate::error::XGBError;
 use std::collections::{BTreeMap, HashMap};
 use std::io::{self, BufRead, BufReader, Write};
+use std::os::raw;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::{ffi, fmt, fs::File, ptr, slice};
@@ -20,6 +21,32 @@ enum PredictOption {
     PredictContribitions,
     //ApproximateContributions,
     PredictInteractions,
+}
+
+#[derive(Default, Debug, Clone)]
+pub enum PredictType {
+    #[default]
+    Normal = 0,
+    OutputMargin = 1,
+    PredictContribitions = 2,
+    PredictApproximateContributions = 3,
+    PredictFeatureInteractions = 4,
+    PredictApproximateFeatureInteractions = 5,
+    PredictLeafTraining = 6,
+}
+impl Into<usize> for PredictType {
+    fn into(self) -> usize {
+        self as usize
+    }
+}
+
+#[derive(Default)]
+pub struct PredictConfig {
+    pub _type: PredictType,
+    pub training: bool,
+    pub iteration_begin: i64,
+    pub iteration_end: i64,
+    pub strict_shape: bool,
 }
 
 impl PredictOption {
@@ -88,6 +115,23 @@ impl Booster {
         debug!("Writing Booster to: {}", path.as_ref().display());
         let fname = crate::path_to_c_str(path);
         xgb_call!(xgboost_sys::XGBoosterSaveModel(self.handle, fname.as_ptr()))
+    }
+
+    /// Save this Booster to a buffer.
+    /// Format is "ubj" when binary, otherwise "json"
+    pub fn save_buffer(&self, binary: bool) -> XGBResult<Vec<u8>> {
+        trace!("Writing Booster to buffer");
+        let config = format!("{{\"format\":\"{}\"}}", if binary { "ubj" } else { "json" });
+        let mut out_len: xgboost_sys::bst_ulong = 0;
+        let mut out_buffer = ptr::null();
+        xgb_call!(xgboost_sys::XGBoosterSaveModelToBuffer(
+            self.handle,
+            config.as_bytes().as_ptr() as *const raw::c_char,
+            &mut out_len,
+            &mut out_buffer
+        ))?;
+        let buffer = unsafe { slice::from_raw_parts(out_buffer as *const u8, out_len as usize).to_vec() };
+        Ok(buffer)
     }
 
     /// Load a Booster from a binary file at given path.
@@ -387,8 +431,10 @@ impl Booster {
 
         // We want zero terminated strings
         let c_temp_features: Vec<ffi::CString> = features.iter().map(|s| ffi::CString::new(*s).unwrap()).collect();
-        use ::std::os::raw;
-        let mut c_feature_ptr: Vec<*const raw::c_char> = c_temp_features.into_iter().map(|s| s.into_raw() as *const raw::c_char).collect();
+        let mut c_feature_ptr: Vec<*const raw::c_char> = c_temp_features
+            .into_iter()
+            .map(|s| s.into_raw() as *const raw::c_char)
+            .collect();
 
         xgb_call!(xgboost_sys::XGBoosterSetStrFeatureInfo(
             self.handle,
@@ -397,10 +443,42 @@ impl Booster {
             features.len() as u64
         ))
     }
+    /// Predict results for given data.
+    ///
+    /// Returns an array containing one entry per row in the given data and its shape as array.
+    pub fn predict_matrix(&self, dmat: &DMatrix, cfg: &PredictConfig) -> XGBResult<(Vec<f32>, Vec<u64>)> {
+        //  ,(usize, usize)
+        let type_int: usize = cfg._type.clone().into();
+        let config_json = format!(
+            "{{\"type\":{},\"training\":{},\"iteration_begin\":{},\"iteration_end\":{},\"strict_shape\":{}}}",
+            type_int, cfg.training, cfg.iteration_begin, cfg.iteration_end, cfg.strict_shape
+        );
+        let mut out_shape = ptr::null();
+        let mut out_shape_dim = 0;
+        let mut out_result = ptr::null();
+        xgb_call!(xgboost_sys::XGBoosterPredictFromDMatrix(
+            self.handle,
+            dmat.handle,
+            config_json.as_bytes().as_ptr() as *const raw::c_char,
+            &mut out_shape,
+            &mut out_shape_dim,
+            &mut out_result
+        ))?;
+        assert!(!out_result.is_null());
+        let shape = unsafe { slice::from_raw_parts(out_shape, out_shape_dim as usize).to_vec() };
+        let mut data_size = 1;
+        for i in 0..shape.len() {
+            data_size *= shape[i];
+        }
+        let data = unsafe { slice::from_raw_parts(out_result, data_size as usize).to_vec() };
+
+        Ok((data, shape))
+    }
 
     /// Predict results for given data.
     ///
     /// Returns an array containing one entry per row in the given data.
+    /// Uses old call to XGBoosterPredict
     pub fn predict(&self, dmat: &DMatrix) -> XGBResult<Vec<f32>> {
         let option_mask = PredictOption::options_as_mask(&[]);
         let ntree_limit = 0;
@@ -788,6 +866,12 @@ mod tests {
         let booster = Booster::load_buffer(&bytes[..]).expect("load booster from buffer");
         let attr = booster.get_attribute("foo").expect("Getting attribute failed");
         assert_eq!(attr, Some("bar".to_owned()));
+
+        let in_memory_bytes = booster.save_buffer(true).unwrap();
+        let booster =
+            Booster::load_buffer(&in_memory_bytes[..] as &[u8]).expect("load booster from memory only buffer");
+        let attr = booster.get_attribute("foo").expect("Getting attribute failed");
+        assert_eq!(attr, Some("bar".to_owned()));
     }
 
     #[test]
@@ -869,6 +953,100 @@ mod tests {
 
         let v = booster.predict(&dmat_test).unwrap();
         assert_eq!(v.len(), dmat_test.num_rows());
+
+        // first 10 predictions
+        let expected_start = [
+            0.0050151693,
+            0.9884467,
+            0.0050151693,
+            0.0050151693,
+            0.026636455,
+            0.11789363,
+            0.9884467,
+            0.01231471,
+            0.9884467,
+            0.00013656063,
+        ];
+
+        // last 10 predictions
+        let expected_end = [
+            0.002520344,
+            0.00060917926,
+            0.99881005,
+            0.00060917926,
+            0.00060917926,
+            0.00060917926,
+            0.00060917926,
+            0.9981102,
+            0.002855195,
+            0.9981102,
+        ];
+        let eps = 1e-6;
+
+        for (pred, expected) in v.iter().zip(&expected_start) {
+            println!("predictions={}, expected={}", pred, expected);
+            assert!(pred - expected < eps);
+        }
+
+        for (pred, expected) in v[v.len() - 10..].iter().zip(&expected_end) {
+            println!("predictions={}, expected={}", pred, expected);
+            assert!(pred - expected < eps);
+        }
+    }
+
+    #[test]
+    fn predict_matrix() {
+        let dmat_train =
+            DMatrix::load(r#"{"uri": "xgboost-sys/xgboost/demo/data/agaricus.txt.train?format=libsvm"}"#).unwrap();
+        let dmat_test =
+            DMatrix::load(r#"{"uri": "xgboost-sys/xgboost/demo/data/agaricus.txt.test?format=libsvm"}"#).unwrap();
+
+        let tree_params = tree::TreeBoosterParametersBuilder::default()
+            .max_depth(2)
+            .eta(1.0)
+            .build()
+            .unwrap();
+        let learning_params = learning::LearningTaskParametersBuilder::default()
+            .objective(learning::Objective::BinaryLogistic)
+            .eval_metrics(learning::Metrics::Custom(vec![
+                learning::EvaluationMetric::MAPCutNegative(4),
+                learning::EvaluationMetric::LogLoss,
+                learning::EvaluationMetric::BinaryErrorRate(0.5),
+            ]))
+            .build()
+            .unwrap();
+        let params = parameters::BoosterParametersBuilder::default()
+            .booster_type(parameters::BoosterType::Tree(tree_params))
+            .learning_params(learning_params)
+            .verbose(false)
+            .build()
+            .unwrap();
+        let mut booster = Booster::new_with_cached_dmats(&params, &[&dmat_train, &dmat_test]).unwrap();
+
+        for i in 0..10 {
+            booster.update(&dmat_train, i).expect("update failed");
+        }
+
+        let train_metrics = booster.evaluate(&dmat_train).unwrap();
+        assert_eq!(*train_metrics.get("logloss").unwrap(), 0.006634271);
+        assert_eq!(*train_metrics.get("map@4-").unwrap(), 1.0);
+
+        let test_metrics = booster.evaluate(&dmat_test).unwrap();
+        let diff = *test_metrics.get("logloss").unwrap() - 0.0069199526;
+        assert_eq!(diff < 0.000001, diff > -0.000001);
+        assert_eq!(*test_metrics.get("map@4-").unwrap(), 1.0);
+
+        let single_matrix = dmat_test.slice(&[0]).unwrap();
+        let (v, shape) = booster
+            .predict_matrix(&single_matrix, &PredictConfig::default())
+            .unwrap();
+        assert_eq!(shape, vec![1]);
+        assert_eq!(v.len(), 1);
+        assert_eq!(v[0], 0.0050151693);
+
+        let (v, shape) = booster.predict_matrix(&dmat_test, &PredictConfig::default()).unwrap();
+        assert_eq!(v.len(), dmat_test.num_rows());
+        assert_eq!(shape, vec![1611]);
 
         // first 10 predictions
         let expected_start = [
