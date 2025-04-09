@@ -106,12 +106,9 @@ to install submodule dependencies.s
 
 Builds against XGBoost 3.0.0.
 
-Deactivated tests - functions probably not working correctly:
+Deactivated test:
 
 - booster::dump_model
-- dmatrix::get_set_base_margin
-- dmatrix::get_set_group
-- dmatrix::get_set_weights
 
 ## Use prebuilt xgboost library
 

@@ -314,7 +314,7 @@ impl DMatrix {
         if out_len > 0 {
             Ok(unsafe { slice::from_raw_parts(out_dptr as *mut c_float, out_len as usize) })
         } else {
-            Err(XGBError::new("error: out len <= 0"))
+            Ok(&[0.0; 0])
         }
     }
 
@@ -338,7 +338,12 @@ impl DMatrix {
             &mut out_len,
             &mut out_dptr
         ))?;
-        Ok(unsafe { slice::from_raw_parts(out_dptr as *mut c_uint, out_len as usize) })
+
+        if out_len > 0 {
+            Ok(unsafe { slice::from_raw_parts(out_dptr as *mut c_uint, out_len as usize) })
+        } else {
+            Ok(&[0; 0])
+        }
     }
 
     fn set_uint_info(&mut self, field: &str, array: &[u32]) -> XGBResult<()> {
@@ -411,7 +416,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn get_set_weights() {
         let mut dmat = read_train_matrix().unwrap();
         assert!(dmat.get_weights().unwrap().is_empty());
@@ -422,12 +426,9 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn get_set_base_margin() {
         let mut dmat = read_train_matrix().unwrap();
-        dbg!(&dmat);
         let base_margin = dmat.get_base_margin();
-        dbg!(&base_margin);
         assert!(base_margin.is_ok());
         assert!(base_margin.unwrap().is_empty());
 
@@ -437,7 +438,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn get_set_group() {
         let mut dmat = read_train_matrix().unwrap();
         assert!(dmat.get_group().unwrap().is_empty());
