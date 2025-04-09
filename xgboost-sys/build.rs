@@ -22,14 +22,8 @@ fn main() {
         .write_to_file(out_path.join("bindings.rs"))
         .expect("Couldn't write bindings.");
 
-    #[allow(unused_mut)]
-    let mut homebrew_path = "/opt/homebrew";
-    #[cfg(not(target_arch = "aarch64"))]
-    {
-        homebrew_path = "/opt/local";
-    }
     if target.contains("apple") {
-        println!("cargo:rustc-link-search=native={}/opt/libomp/lib", &homebrew_path);
+        println!("cargo:rustc-link-search=native={}/opt/libomp/lib", &std::env::var("HOMEBREW_PREFIX").unwrap());
     }
     
     #[cfg(feature = "use_prebuilt_xgb")]
