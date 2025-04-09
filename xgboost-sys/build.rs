@@ -110,7 +110,7 @@ fn main() {
                             .args(&[
                                 "-r",
                                 &format!("{}/xgboost/lib/.", &base_path),
-                                &deps_path.to_str().unwrap(),
+                                &deps_path,
                             ])
                             .status()
                             .unwrap();
