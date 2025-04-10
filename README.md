@@ -114,22 +114,32 @@ Deactivated test:
 
 Xgboost is kind of complicated to compile, especially when there is GPU support involved.
 It is sometimes easier to use a pre-build library.
-The feature flag `use_prebuilt_xgb` is enabled by default.
-This will use the version installed in `$XGBOOST_LIB_DIR`. If it isn't set, it will use `homebrew` on MacOs and the one from `python3 -m pip info xgboost` on Windows and Linux.
+The feature flag `use_prebuilt_xgb` is not enabled by default.
+This would use the version installed in `$XGBOOST_LIB_DIR`. If it isn't set, it will use `homebrew`.
 
 
-If you want to compile xgboost by yourself, you can disable the default feature:
+If you want to use the prebuilt feature:
 ```
-xgb = { version = "3.0.0", default-features = false }
+xgb = { version = "3.0.1", features=["use_prebuilt_xgb"] }
 ```
 
 ### Platforms
 
-Tested, prebuilt and locally compiled:
+Tested by GH actions, homebrew and locally compiled:
 
 * Mac OS 
 * Linux
 
-Tested, prebuilt only:
+Tested on Windows locally with prebuilt dll library from pip, xgboost version 3.0.0, but somehow I couldn't get xgboost compiled from source.
 
-* Windows
+How to get a .lib and .dll from pip , using a VS Developer CMD prompt:
+```
+python3 -m venv .venv
+.venv\Scripts\activate.bat
+pip install xgboost
+pip show xgboost
+# check Location entry
+copy {Location}\xgboost.dll .
+gendef xgboost.dll
+lib /def:xgboost.def /machine:x64" /out:xgboost.lib
+```

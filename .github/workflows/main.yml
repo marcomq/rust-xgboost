@@ -36,21 +36,22 @@ jobs:
 
     - name: Run tests
       run: cargo test --verbose
-      
-  windows:
-    runs-on: windows-latest
 
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: recursive
+#  Disabled, as it is complicated to build xboost on windows      
+#  windows:
+#    runs-on: windows-latest
 
-    - name: Install dependencies
-      run: python3 -m pip install --break-system-package xgboost
+#    steps:
+#    - uses: actions/checkout@v4
+#      with:
+#        submodules: recursive
 
-    - name: Build
-      run: cargo build --verbose
+#    - name: Install dependencies
+#      run: python3 -m pip install --break-system-package xgboost
 
-    - name: Run tests
-      run: cargo test --verbose
+#    - name: Build
+#      run: cargo build --verbose
+
+#    - name: Run tests
+#      run: cargo test --verbose
       
