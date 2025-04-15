@@ -19,6 +19,11 @@ It is highly recommended to use the `use_prebuilt_xgb` feature, which is enabled
 It will use an already compiled xgboost library which will be downloaded as build step of this crate.
 On Mac, it will use an arm64 shared library. On windows and linux, it is using x64 architecture.
 
+On mac you need to install `libomp`. 
+```
+brew install libomp
+```
+
 ## Documentation
 
 * [Documentation](https://docs.rs/xgboost)
@@ -89,7 +94,7 @@ fn main() {
 }
 ```
 
-See the [examples](https://github.com/davechallis/rust-xgboost/tree/master/examples) directory for
+See the [examples](https://github.com/marcomq/rust-xgboost/tree/master/examples) directory for
 more detailed examples of different features.
 
 ## Status
