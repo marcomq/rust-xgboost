@@ -10,18 +10,8 @@ Creates a shared library and uses Ninja instead of makefiles as generator.
 ## Requirements
 
 It is highly recommended to use the `use_prebuilt_xgb` feature, which is enabled by default.
-It will use an already installed xgboost library from homebrew or pip. 
-
-brew commands for MacOs:
-
-with use_prebuilt_lib:
-- brew install xgboost
-
-compile yourself:
-- brew install libomp
-- brew install cmake
-- brew install ninja
-- brew install llvm
+It will use an already installed xgboost library which is already delievered by this crate.
+On Mac, it will use an arm64 shared library. On windows and linux, it is using x64 architecture.
 
 ## Documentation
 
@@ -101,36 +91,52 @@ more detailed examples of different features.
 Currently in a very early stage of development, so the API is changing as usability issues occur,
 or new features are supported.
 
-If you build it locally, after cloning, perform `git submodule update --init --recursive`
-to install submodule dependencies.s
-
 Builds against XGBoost 3.0.0.
 
 Deactivated test:
 
-- booster::dump_model
+- booster::dump_model, reason: Output seems to be empty.
 
 ## Use prebuilt xgboost library
 
 Xgboost is kind of complicated to compile, especially when there is GPU support involved.
-It is sometimes easier to use a pre-build library.
-The feature flag `use_prebuilt_xgb` is not enabled by default.
-This would use the version installed in `$XGBOOST_LIB_DIR`. If it isn't set, it will use `homebrew`.
+It is sometimes easier to use a pre-build library. Therefore, the feature flag `use_prebuilt_xgb` is enabled by default.
+This is using a prebuilt shared library in xboost-sys/lib by default. You can also use a custom folder by defining `$XGBOOST_LIB_DIR`.
 
-
-If you want to use the prebuilt feature:
+If you prefer to use xgboost from homebrew, which may have GPU support, your can for example define
 ```
-xgb = { version = "3.0.1", features=["use_prebuilt_xgb"] }
+XGBOOST_LIB_DIR=${HOMEBREW_PREFIX}/opt/xgboost/lib
 ```
 
-### Platforms
+If you want to use it by yourself, you can disable the feature:
+```
+xgb = { version = "3.0.1",  default-features = false }
+```
+This would require `cmake` and `ninja-build` as build dependencies.
 
-Tested by GH actions, homebrew and locally compiled:
+If you want build it locally, after cloning, perform `git submodule update --init --recursive`
+to install submodule dependencies.
 
-* Mac OS 
+brew commands for MacOs to compile locally:
+- brew install libomp
+- brew install cmake
+- brew install ninja
+- brew install llvm
+
+### Supported Platforms
+
+Prebuilt lib and built locally:
+
+* Mac OS
 * Linux
 
-Tested on Windows locally with prebuilt dll library from pip, xgboost version 3.0.0, but somehow I couldn't get xgboost compiled from source.
+Prebuilt lib only
+
+* Windows 
+
+Local windows built is possible, but steps may require manual copy of VS output files.
+
+GPU support on windows:
 
 How to get a .lib and .dll from pip , using a VS Developer CMD prompt:
 ```
