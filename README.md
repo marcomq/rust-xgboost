@@ -16,7 +16,7 @@ Creates a shared library and uses Ninja instead of makefiles as generator.
 ## Requirements
 
 It is highly recommended to use the `use_prebuilt_xgb` feature, which is enabled by default.
-It will use an already installed xgboost library which is already delievered by this crate.
+It will use an already compiled xgboost library which will be downloaded as build step of this crate.
 On Mac, it will use an arm64 shared library. On windows and linux, it is using x64 architecture.
 
 ## Documentation
@@ -94,8 +94,10 @@ more detailed examples of different features.
 
 ## Status
 
-Currently in a very early stage of development, so the API is changing as usability issues occur,
-or new features are supported.
+The version number is just an indicator that xboost 3.0.0 is used.
+
+This is still a very early stage of development, so the API is changing as usability issues occur,
+or new features are supported. This is still expected to be compatible to an earlier rust-xgboost library.
 
 Builds against XGBoost 3.0.0.
 
@@ -103,7 +105,7 @@ Deactivated test:
 
 - booster::dump_model, reason: Output seems to be empty.
 
-## Use prebuilt xgboost library
+## Use prebuilt xgboost library or build it
 
 Xgboost is kind of complicated to compile, especially when there is GPU support involved.
 It is sometimes easier to use a pre-build library. Therefore, the feature flag `use_prebuilt_xgb` is enabled by default.
@@ -114,7 +116,7 @@ If you prefer to use xgboost from homebrew, which may have GPU support, your can
 XGBOOST_LIB_DIR=${HOMEBREW_PREFIX}/opt/xgboost/lib
 ```
 
-If you want to use it by yourself, you can disable the feature:
+If you want to use it by yourself, you can disable the use_prebuild_xgb feature:
 ```
 xgb = { version = "3.0.1",  default-features = false }
 ```
