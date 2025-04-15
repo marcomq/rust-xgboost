@@ -1,4 +1,10 @@
+[![Actions Status](https://github.com/marcomq/rust-xgboost/workflows/Macos/badge.svg)](https://github.com/marcomq/rust-xgboost/actions/workflows/macos.yml)
+[![Actions Status](https://github.com/marcomq/rust-xgboost/workflows/Linux/badge.svg)](https://github.com/marcomq/rust-xgboost/actions/workflows/linux.yml)
+[![Actions Status](https://github.com/marcomq/rust-xgboost/workflows/Windows/badge.svg)](https://github.com/marcomq/rust-xgboost/actions/workflows/windows.yml)
+
+
 # rust-xgboost
+
 
 This is mostly a fork of https://github.com/davechallis/rust-xgboost but uses 
 another xgboost version and links it dynamically instead of linkit it static as the original library.
