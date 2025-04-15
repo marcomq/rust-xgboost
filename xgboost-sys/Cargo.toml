@@ -9,14 +9,18 @@ repository = "https://github.com/marcomq/rust-xgboost"
 description = "Native bindings to the xgboost library"
 readme = "README.md"
 edition = "2021"
+exclude = [
+    "lib/*",
+]
 
 [dependencies]
-libc = "0.2"
+libc = "0.2.172"
 
 [build-dependencies]
 bindgen = "0.71"
 cmake = "0.1"
 dunce = "1.0.5"
+reqwest = { version = "0.12.15", features = ["blocking"] }
 
 [features]
 default = ["use_prebuilt_xgb"]

@@ -2,6 +2,8 @@ use bindgen;
 use std::env;
 use std::path::{Path, PathBuf};
 
+const GITHUB_URL: &str = "https://github.com/marcomq/rust-xgboost/raw/refs/tags/v3.0.0/xgboost-sys/lib/";
+
 fn main() {
     let target = env::var("TARGET").unwrap();
     let out_dir = env::var("OUT_DIR").unwrap();
@@ -28,41 +30,40 @@ fn main() {
     
     #[cfg(feature = "use_prebuilt_xgb")]
     {
-        let xgboost_lib_dir = std::env::var("XGBOOST_LIB_DIR").unwrap_or_else(|_err| {
+        if let Ok(xgboost_lib_dir) = std::env::var("XGBOOST_LIB_DIR") {
+            println!("cargo:rustc-link-search=native={}", xgboost_lib_dir);
+        } else {
 
-            let path =  dunce::canonicalize(std::path::absolute(".").unwrap()).unwrap();
             let deps_path = dunce::canonicalize(Path::new(&format!("{}/../../../deps", out_dir))).unwrap();
-            let pwd = path.to_string_lossy();
             let deps_path = deps_path.to_string_lossy();
-            dbg!(&deps_path);
+            println!("cargo:rustc-link-search=native={}", deps_path);
             if cfg!(all(target_os="macos", target_arch = "aarch64")) {
-                let path = format!("{pwd}/lib/mac_arm64");
+                let path = format!("{GITHUB_URL}/mac_arm64");
                 if !std::fs::exists(format!("{deps_path}/libxgboost.dylib")).unwrap() {
-                    std::fs::copy(format!("{path}/libxgboost.dylib"), format!("{deps_path}/libxgboost.dylib")).unwrap();
+                    web_copy(&format!("{path}/libxgboost.dylib"), &format!("{deps_path}/libxgboost.dylib")).unwrap();
+                    web_copy(&format!("{path}/libdmlc.a"), &format!("{deps_path}/libdmlc.a")).unwrap();
                 }
-                path
             } else if cfg!(all(target_os="linux", target_arch = "x86_64")) {
-                let path = format!("{pwd}/lib/linux_amd64");
+                let path = format!("{GITHUB_URL}/linux_amd64");
                 if !std::fs::exists(format!("{deps_path}/libxgboost.so")).unwrap() {
-                    std::fs::copy(format!("{path}/libxgboost.so"), format!("{deps_path}/libxgboost.so")).unwrap();
+                    web_copy(&format!("{path}/libxgboost.so"), &format!("{deps_path}/libxgboost.so")).unwrap();
+                    web_copy(&format!("{path}/libdmlc.a"), &format!("{deps_path}/libdmlc.a")).unwrap();
                 }
-                path
             } else if cfg!(all(target_os="windows", target_arch = "x86_64")) { 
-                let path = format!("{pwd}/lib/win_amd64");
+                let path = format!("{GITHUB_URL}/win_amd64");
                 if !std::fs::exists(format!("{deps_path}/xgboost.dll")).unwrap() {
-                    std::fs::copy(format!("{path}/xgboost.dll"), format!("{deps_path}/xgboost.dll")).unwrap();
-                    std::fs::copy(format!("{path}/xgboost.lib"), format!("{deps_path}/xgboost.lib")).unwrap();
+                    web_copy(&format!("{path}/xgboost.dll"), &format!("{deps_path}/xgboost.dll")).unwrap();
+                    web_copy(&format!("{path}/xgboost.lib"), &format!("{deps_path}/xgboost.lib")).unwrap();
                 }
-                path
              } else {
                 if let Ok(homebrew_path) = std::env::var("HOMEBREW_PREFIX") {
-                    format!("{}/opt/xgboost/lib", &homebrew_path)
+                    let xgboost_lib_dir = format!("{}/opt/xgboost/lib", &homebrew_path);
+                    println!("cargo:rustc-link-search=native={}", xgboost_lib_dir);
                 } else {
                     panic!("Please set $XGBOOST_LIB_DIR")
                 }
             }
-        });
-        println!("cargo:rustc-link-search=native={}", xgboost_lib_dir);
+        }
     }
 
     #[cfg(not(feature = "use_prebuilt_xgb"))]
@@ -108,4 +109,13 @@ fn main() {
         println!("cargo:rustc-link-search={}", "/usr/local/cuda/lib64");
         println!("cargo:rustc-link-lib=static=cudart_static");
     }
+}
+
+type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+fn web_copy(web_src: &str, target: &str) -> Result<()>{
+    dbg!(&web_src);
+    let resp = reqwest::blocking::get(web_src)?;
+    let body = resp.bytes()?;
+    std::fs::write(target, &body)?;
+    Ok(())
 }
