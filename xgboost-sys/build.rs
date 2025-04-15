@@ -28,12 +28,38 @@ fn main() {
     
     #[cfg(feature = "use_prebuilt_xgb")]
     {
-        use fs_extra;
         let xgboost_lib_dir = std::env::var("XGBOOST_LIB_DIR").unwrap_or_else(|_err| {
-            if let Ok(homebrew_path) = std::env::var("HOMEBREW_PREFIX") {
-                format!("{}/opt/xgboost/lib", &homebrew_path)
-            } else {
-                panic!("Please set $XGBOOST_LIB_DIR");
+
+            let path =  dunce::canonicalize(std::path::absolute(".").unwrap()).unwrap();
+            let deps_path = dunce::canonicalize(Path::new(&format!("{}/../../../deps", out_dir))).unwrap();
+            let pwd = path.to_string_lossy();
+            let deps_path = deps_path.to_string_lossy();
+            dbg!(&deps_path);
+            if cfg!(all(target_os="macos", target_arch = "aarch64")) {
+                let path = format!("{pwd}/lib/mac_arm64");
+                if !std::fs::exists(format!("{deps_path}/libxgboost.dylib")).unwrap() {
+                    std::fs::copy(format!("{path}/libxgboost.dylib"), format!("{deps_path}/libxgboost.dylib")).unwrap();
+                }
+                path
+            } else if cfg!(all(target_os="linux", target_arch = "x86_64")) {
+                let path = format!("{pwd}/lib/linux_amd64");
+                if !std::fs::exists(format!("{deps_path}/libxgboost.so")).unwrap() {
+                    std::fs::copy(format!("{path}/libxgboost.so"), format!("{deps_path}/libxgboost.so")).unwrap();
+                }
+                path
+            } else if cfg!(all(target_os="windows", target_arch = "x86_64")) { 
+                let path = format!("{pwd}/lib/win_amd64");
+                if !std::fs::exists(format!("{deps_path}/xgboost.dll")).unwrap() {
+                    std::fs::copy(format!("{path}/xgboost.dll"), format!("{deps_path}/xgboost.dll")).unwrap();
+                    std::fs::copy(format!("{path}/xgboost.lib"), format!("{deps_path}/xgboost.lib")).unwrap();
+                }
+                path
+             } else {
+                if let Ok(homebrew_path) = std::env::var("HOMEBREW_PREFIX") {
+                    format!("{}/opt/xgboost/lib", &homebrew_path)
+                } else {
+                    panic!("Please set $XGBOOST_LIB_DIR")
+                }
             }
         });
         println!("cargo:rustc-link-search=native={}", xgboost_lib_dir);

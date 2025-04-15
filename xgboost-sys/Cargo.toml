@@ -16,9 +16,9 @@ libc = "0.2"
 [build-dependencies]
 bindgen = "0.71"
 cmake = "0.1"
-fs_extra = "1.3.0"
 dunce = "1.0.5"
 
 [features]
+default = ["use_prebuilt_xgb"]
 use_prebuilt_xgb = []
 cuda = []
