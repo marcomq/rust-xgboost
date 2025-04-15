@@ -1,7 +1,9 @@
 ## Content
-These binary libs have been copied from existing repos, using version 3.0.0 of xgboost and then uploaded here.
-They have been created for convenience and because homebrew isn't able to download a specific version. 
-The selection was fine for our developers - we currently don't need to add other binaries.
+This folder contains binary shared libraries of version 3.0.0 of xgboost.
+The libs have been copied from existing respositories and were then uploaded here. They are not needed if feature "use_prebuilt_xgb" is disabled.
+
+They have been uploaded here for convenience and because homebrew isn't able to download a specific version. 
+The selection was made internally for our developers - we currently don't need to add other binaries.
 
 Source:
 - linux_amd64: homebrew installed via curl, xgboost 3.0.0, debian 12, amd64 docker container
