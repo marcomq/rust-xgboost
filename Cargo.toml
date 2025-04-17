@@ -1,6 +1,6 @@
 [package]
 name = "xgb"
-version = "3.0.1"
+version = "3.0.2"
 authors = ["Dave Challis <dave@suicas.net>", "Marco Mengelkoch"]
 license = "MIT"
 repository = "https://github.com/marcomq/rust-xgboost"
@@ -20,5 +20,6 @@ indexmap = "2.7"
 
 [features]
 use_prebuilt_xgb = ["xgboost-sys/use_prebuilt_xgb"]
+local_build = ["xgboost-sys/local_build"]
 cuda = ["xgboost-sys/cuda"]
-default  = []
+default  = ["use_prebuilt_xgb"]

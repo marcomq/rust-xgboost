@@ -123,7 +123,7 @@ XGBOOST_LIB_DIR=${HOMEBREW_PREFIX}/opt/xgboost/lib
 
 If you want to use it by yourself, you can disable the use_prebuild_xgb feature:
 ```
-xgb = { version = "3.0.1",  default-features = false }
+xgb = { version = "3",  default-features = false, features=["local_build"] }
 ```
 This would require `cmake` and `ninja-build` as build dependencies.
 
