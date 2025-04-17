@@ -78,7 +78,7 @@ mod dmatrix;
 pub use dmatrix::DMatrix;
 
 mod booster;
-pub use booster::{Booster, FeatureMap, FeatureType};
+pub use booster::{Booster, FeatureMap, FeatureType, PredictConfig, PredictType};
 pub mod parameters;
 use std::{ffi, path::Path};
 

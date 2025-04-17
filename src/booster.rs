@@ -34,11 +34,6 @@ pub enum PredictType {
     PredictApproximateFeatureInteractions = 5,
     PredictLeafTraining = 6,
 }
-impl Into<usize> for PredictType {
-    fn into(self) -> usize {
-        self as usize
-    }
-}
 
 #[derive(Default)]
 pub struct PredictConfig {
@@ -47,6 +42,20 @@ pub struct PredictConfig {
     pub iteration_begin: i64,
     pub iteration_end: i64,
     pub strict_shape: bool,
+}
+
+impl PredictConfig {
+    /// returns 0 terminated json of the config, mainly for usage in predict_matrix
+    pub fn as_json(&self) -> String {
+        format!(
+            "{{\"type\":{},\"training\":{},\"iteration_begin\":{},\"iteration_end\":{},\"strict_shape\":{}}}\0",
+            self._type.clone() as usize,
+            self.training,
+            self.iteration_begin,
+            self.iteration_end,
+            self.strict_shape
+        )
+    }
 }
 
 impl PredictOption {
@@ -443,23 +452,26 @@ impl Booster {
             features.len() as u64
         ))
     }
+
     /// Predict results for given data.
     ///
+    /// config_json should be a 0 terminated string, preferred created by PredictConfig::as_json
     /// Returns an array containing one entry per row in the given data and its shape as array.
-    pub fn predict_matrix(&self, dmat: &DMatrix, cfg: &PredictConfig) -> XGBResult<(Vec<f32>, Vec<u64>)> {
-        //  ,(usize, usize)
-        let type_int: usize = cfg._type.clone().into();
-        let config_json = format!(
-            "{{\"type\":{},\"training\":{},\"iteration_begin\":{},\"iteration_end\":{},\"strict_shape\":{}}}",
-            type_int, cfg.training, cfg.iteration_begin, cfg.iteration_end, cfg.strict_shape
-        );
+    pub fn predict_matrix(&self, dmat: &DMatrix, config_json: &str) -> XGBResult<(Vec<f32>, Vec<u64>)> {
+        let str_buffer: std::ffi::CString;
+        let cfg = if !config_json.is_empty() && config_json.chars().last().unwrap() == '\0' {
+            unsafe { std::ffi::CStr::from_ptr(config_json.as_ptr() as *const raw::c_char) }
+        } else {
+            str_buffer = std::ffi::CString::new(config_json).unwrap();
+            str_buffer.as_c_str()
+        };
         let mut out_shape = ptr::null();
         let mut out_shape_dim = 0;
         let mut out_result = ptr::null();
         xgb_call!(xgboost_sys::XGBoosterPredictFromDMatrix(
             self.handle,
             dmat.handle,
-            config_json.as_bytes().as_ptr() as *const raw::c_char,
+            cfg.as_ptr() as *const raw::c_char,
             &mut out_shape,
             &mut out_shape_dim,
             &mut out_result
@@ -1046,13 +1058,13 @@ mod tests {
 
         let single_matrix = dmat_test.slice(&[0]).unwrap();
         let (v, shape) = booster
-            .predict_matrix(&single_matrix, &PredictConfig::default())
+            .predict_matrix(&single_matrix, &PredictConfig::default().as_json())
             .unwrap();
         assert_eq!(shape, vec![1]);
         assert_eq!(v.len(), 1);
         assert_eq!(v[0], 0.0050151693);
-
-        let (v, shape) = booster.predict_matrix(&dmat_test, &PredictConfig::default()).unwrap();
+        let cfg = PredictConfig::default();
+        let (v, shape) = booster.predict_matrix(&dmat_test, &cfg.as_json()).unwrap();
         assert_eq!(v.len(), dmat_test.num_rows());
         assert_eq!(shape, vec![1611]);
 
