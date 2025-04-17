@@ -635,7 +635,15 @@ impl Booster {
         }
     }
 
+    pub fn dump_model_vec(&self, with_statistics: bool) -> XGBResult<Vec<String>> {
+        self.dump_model_fmap_vec(with_statistics, None)
+    }
+
     fn dump_model_fmap(&self, with_statistics: bool, feature_map_path: Option<&PathBuf>) -> XGBResult<String> {
+        Ok(self.dump_model_fmap_vec(with_statistics, feature_map_path)?.join("\n"))
+    }
+
+    fn dump_model_fmap_vec(&self, with_statistics: bool, feature_map_path: Option<&PathBuf>) -> XGBResult<Vec<String>> {
         let fmap = if let Some(path) = feature_map_path {
             crate::path_to_c_str(path)
         } else {
@@ -661,9 +669,9 @@ impl Booster {
                 .collect();
 
             assert_eq!(out_len as usize, out_vec.len());
-            Ok(out_vec.join("\n"))
+            Ok(out_vec)
         } else {
-            Ok(String::new())
+            Ok(Vec::new())
         }
     }
 
