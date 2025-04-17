@@ -66,7 +66,7 @@ fn main() {
         }
     }
 
-    #[cfg(not(feature = "use_prebuilt_xgb"))]
+    #[cfg(feature = "local_build")]
     {
         // compile XGBOOST with cmake and ninja
 
@@ -112,6 +112,8 @@ fn main() {
 }
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
+#[cfg(feature = "use_prebuilt_xgb")]
 fn web_copy(web_src: &str, target: &str) -> Result<()>{
     dbg!(&web_src);
     let resp = reqwest::blocking::get(web_src)?;

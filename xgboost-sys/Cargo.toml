@@ -14,15 +14,16 @@ exclude = [
 ]
 
 [dependencies]
-libc = "0.2.172"
+libc = "0.2"
 
 [build-dependencies]
-bindgen = "0.71"
-cmake = "0.1"
-dunce = "1.0.5"
-reqwest = { version = "0.12.15", features = ["blocking"] }
+bindgen = { version = "0.71" }
+dunce =  { version = "1.0.5" }
+reqwest = { version = "0.12.15", features = ["blocking"], optional = true }
+cmake = { version = "0.1", optional = true } 
 
 [features]
 default = ["use_prebuilt_xgb"]
-use_prebuilt_xgb = []
+use_prebuilt_xgb = ["reqwest"]
+local_build = ["cmake"]
 cuda = []
