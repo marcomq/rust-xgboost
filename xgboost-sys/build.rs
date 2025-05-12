@@ -25,7 +25,7 @@ fn main() {
         .expect("Couldn't write bindings.");
 
     if target.contains("apple") {
-        println!("cargo:rustc-link-search=native={}/opt/libomp/lib", &std::env::var("HOMEBREW_PREFIX").unwrap());
+        println!("cargo:rustc-link-search=native={}/opt/libomp/lib", &std::env::var("HOMEBREW_PREFIX").unwrap_or("/opt/homebrew".into()));
     }
     
     #[cfg(feature = "use_prebuilt_xgb")]
