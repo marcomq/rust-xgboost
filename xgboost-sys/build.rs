@@ -43,8 +43,14 @@ fn main() {
                     web_copy(&format!("{path}/libxgboost.dylib"), &format!("{deps_path}/libxgboost.dylib")).unwrap();
                     web_copy(&format!("{path}/libdmlc.a"), &format!("{deps_path}/libdmlc.a")).unwrap();
                 }
-            } else if cfg!(all(target_os="linux", target_arch = "x86_64")) {
-                let path = format!("{GITHUB_URL}/linux_amd64");
+            } else if cfg!(target_os="linux") {
+                let path = 
+                if cfg!(target_arch = "aarch64") {
+                    format!("{GITHUB_URL}/linux_arm64")
+                }
+                else {
+                    format!("{GITHUB_URL}/linux_amd64")
+                };
                 if !std::fs::exists(format!("{deps_path}/libxgboost.so")).unwrap() {
                     web_copy(&format!("{path}/libxgboost.so"), &format!("{deps_path}/libxgboost.so")).unwrap();
                     web_copy(&format!("{path}/libdmlc.a"), &format!("{deps_path}/libdmlc.a")).unwrap();
