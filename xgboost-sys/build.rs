@@ -25,43 +25,47 @@ fn main() {
         .expect("Couldn't write bindings.");
 
     if target.contains("apple") {
-        println!("cargo:rustc-link-search=native={}/opt/libomp/lib", &std::env::var("HOMEBREW_PREFIX").unwrap_or("/opt/homebrew".into()));
+        println!(
+            "cargo:rustc-link-search=native={}/opt/libomp/lib",
+            &std::env::var("HOMEBREW_PREFIX").unwrap_or("/opt/homebrew".into())
+        );
     }
-    
+
     #[cfg(feature = "use_prebuilt_xgb")]
     {
         if let Ok(xgboost_lib_dir) = std::env::var("XGBOOST_LIB_DIR") {
             println!("cargo:rustc-link-search=native={}", xgboost_lib_dir);
         } else {
-
             let deps_path = dunce::canonicalize(Path::new(&format!("{}/../../../deps", out_dir))).unwrap();
             let deps_path = deps_path.to_string_lossy();
             println!("cargo:rustc-link-search=native={}", deps_path);
-            if cfg!(all(target_os="macos", target_arch = "aarch64")) {
+            if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
                 let path = format!("{GITHUB_URL}/mac_arm64");
                 if !std::fs::exists(format!("{deps_path}/libxgboost.dylib")).unwrap() {
-                    web_copy(&format!("{path}/libxgboost.dylib"), &format!("{deps_path}/libxgboost.dylib")).unwrap();
+                    web_copy(
+                        &format!("{path}/libxgboost.dylib"),
+                        &format!("{deps_path}/libxgboost.dylib"),
+                    )
+                    .unwrap();
                     web_copy(&format!("{path}/libdmlc.a"), &format!("{deps_path}/libdmlc.a")).unwrap();
                 }
-            } else if cfg!(target_os="linux") {
-                let path = 
-                if cfg!(target_arch = "aarch64") {
+            } else if cfg!(target_os = "linux") {
+                let path = if cfg!(target_arch = "aarch64") {
                     format!("{GITHUB_URL}/linux_arm64")
-                }
-                else {
+                } else {
                     format!("{GITHUB_URL}/linux_amd64")
                 };
                 if !std::fs::exists(format!("{deps_path}/libxgboost.so")).unwrap() {
                     web_copy(&format!("{path}/libxgboost.so"), &format!("{deps_path}/libxgboost.so")).unwrap();
                     web_copy(&format!("{path}/libdmlc.a"), &format!("{deps_path}/libdmlc.a")).unwrap();
                 }
-            } else if cfg!(all(target_os="windows", target_arch = "x86_64")) { 
+            } else if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
                 let path = format!("{GITHUB_URL}/win_amd64");
                 if !std::fs::exists(format!("{deps_path}/xgboost.dll")).unwrap() {
                     web_copy(&format!("{path}/xgboost.dll"), &format!("{deps_path}/xgboost.dll")).unwrap();
                     web_copy(&format!("{path}/xgboost.lib"), &format!("{deps_path}/xgboost.lib")).unwrap();
                 }
-             } else {
+            } else {
                 if let Ok(homebrew_path) = std::env::var("HOMEBREW_PREFIX") {
                     let xgboost_lib_dir = format!("{}/opt/xgboost/lib", &homebrew_path);
                     println!("cargo:rustc-link-search=native={}", xgboost_lib_dir);
@@ -120,7 +124,7 @@ fn main() {
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 #[cfg(feature = "use_prebuilt_xgb")]
-fn web_copy(web_src: &str, target: &str) -> Result<()>{
+fn web_copy(web_src: &str, target: &str) -> Result<()> {
     dbg!(&web_src);
     let resp = reqwest::blocking::get(web_src)?;
     let body = resp.bytes()?;
