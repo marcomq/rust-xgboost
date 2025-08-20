@@ -7,7 +7,7 @@ env:
 
 jobs:
   linux:
-    name: linux
+    name: linux_arm64
     runs-on: ubuntu-22.04-arm
 
     steps:
