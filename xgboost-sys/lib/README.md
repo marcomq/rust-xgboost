@@ -7,7 +7,7 @@ The selection was made internally for our developers - we currently don't need t
 
 Source:
 - linux_amd64: homebrew installed via curl, unknown GPU support, xgboost 3.0.0, debian 12, amd64 docker container
-- linux_arm64: homebrew installed via curl, unknown GPU support, xgboost 3.0.1, debian 12, amd64 docker container
+- linux_arm64: homebrew installed via curl, unknown GPU support, xgboost 3.0.1, debian 12, arm64 docker container
 - mac_arm64: homebrew installed via curl, unknown GPU support, xgboost 3.0.0, Sequioa 15.3, arm64
 - win_amd64: built locally without GPU support as pip dll was > 150MB, python 3.13, Visua Studio 2022
 
