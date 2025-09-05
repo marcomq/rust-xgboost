@@ -6,7 +6,6 @@
 //!
 //! Parameters are generally created through builders that provide sensible defaults, and ensure that
 //! any given settings are valid when built.
-use std::default::Default;
 use std::fmt::{self, Display};
 
 mod booster;
@@ -77,8 +76,8 @@ impl BoosterParameters {
     /// Get number of parallel threads XGboost will use (if compiled with multiprocessing support).
     ///
     /// If `None`, XGBoost will determine the number of threads to use automatically.
-    pub fn threads(&self) -> &Option<u32> {
-        &self.threads
+    pub fn threads(&self) -> Option<u32> {
+        self.threads
     }
 
     /// Set number of parallel threads XGBoost will use (if compiled with multiprocessing support).
@@ -173,24 +172,24 @@ impl<'a> TrainingParameters<'a> {
         self.booster_params = booster_params.into();
     }
 
-    pub fn evaluation_sets(&self) -> &Option<&'a [(&'a DMatrix, &'a str)]> {
-        &self.evaluation_sets
+    pub fn evaluation_sets(&self) -> Option<&'a [(&'a DMatrix, &'a str)]> {
+        self.evaluation_sets
     }
 
     pub fn set_evaluation_sets(&mut self, evaluation_sets: Option<&'a [(&'a DMatrix, &'a str)]>) {
         self.evaluation_sets = evaluation_sets;
     }
 
-    pub fn custom_objective_fn(&self) -> &Option<CustomObjective> {
-        &self.custom_objective_fn
+    pub fn custom_objective_fn(&self) -> Option<CustomObjective> {
+        self.custom_objective_fn
     }
 
     pub fn set_custom_objective_fn(&mut self, custom_objective_fn: Option<CustomObjective>) {
         self.custom_objective_fn = custom_objective_fn;
     }
 
-    pub fn custom_evaluation_fn(&self) -> &Option<CustomEvaluation> {
-        &self.custom_evaluation_fn
+    pub fn custom_evaluation_fn(&self) -> Option<CustomEvaluation> {
+        self.custom_evaluation_fn
     }
 
     pub fn set_custom_evaluation_fn(&mut self, custom_evaluation_fn: Option<CustomEvaluation>) {
@@ -247,46 +246,36 @@ impl<T: PartialOrd + Display> Interval<T> {
     }
 
     fn contains(&self, val: &T) -> bool {
-        match self.min_inclusion {
-            Inclusion::Closed => {
-                if !(val >= &self.min) {
-                    return false;
-                }
-            }
-            Inclusion::Open => {
-                if !(val > &self.min) {
-                    return false;
-                }
-            }
+        // If any comparison returns None, treat as uncomparable (e.g., NaN for floats)
+        let min_cmp = match self.min_inclusion {
+            Inclusion::Closed => val.partial_cmp(&self.min).map(|o| o >= std::cmp::Ordering::Equal),
+            Inclusion::Open => val.partial_cmp(&self.min).map(|o| o == std::cmp::Ordering::Greater),
+        };
+        if min_cmp.is_none() || min_cmp == Some(false) {
+            return false; // Uncomparable or less than min
         }
-        match self.max_inclusion {
-            Inclusion::Closed => {
-                if !(val <= &self.max) {
-                    return false;
-                }
-            }
-            Inclusion::Open => {
-                if !(val < &self.max) {
-                    return false;
-                }
-            }
+        let max_cmp = match self.max_inclusion {
+            Inclusion::Closed => val.partial_cmp(&self.max).map(|o| o <= std::cmp::Ordering::Equal),
+            Inclusion::Open => val.partial_cmp(&self.max).map(|o| o == std::cmp::Ordering::Less),
+        };
+        if !max_cmp.is_none() || max_cmp == Some(false) {
+            return false; // Uncomparable or less than min
         }
         true
     }
 
     fn validate(&self, val: &Option<T>, name: &str) -> Result<(), String> {
-        match &val {
-            Some(ref val) => {
-                if self.contains(val) {
-                    Ok(())
-                } else {
-                    Err(format!(
-                        "Invalid value for '{}' parameter, {} is not in range {}.",
-                        name, &val, self
-                    ))
-                }
+        if let Some(val) = val {
+            if self.contains(val) {
+                Ok(())
+            } else {
+                Err(format!(
+                    "Invalid value for '{}' parameter, {} is not in range {}.",
+                    name, val, self
+                ))
             }
-            None => Ok(()),
+        } else {
+            Ok(())
         }
     }
 }

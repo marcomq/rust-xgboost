@@ -435,6 +435,7 @@ impl Booster {
     }
 
     /// Set names of features stored in this model.
+    #[allow(clippy::unnecessary_cast)]
     pub fn set_feature_info(&self, field: &str, features: &Vec<&str>) -> XGBResult<()> {
         let field: ffi::CString = ffi::CString::new(field).unwrap();
 
@@ -459,7 +460,7 @@ impl Booster {
     /// Returns an array containing one entry per row in the given data and its shape as array.
     pub fn predict_matrix(&self, dmat: &DMatrix, config_json: &str) -> XGBResult<(Vec<f32>, Vec<u64>)> {
         let str_buffer: std::ffi::CString;
-        let cfg = if !config_json.is_empty() && config_json.chars().last().unwrap() == '\0' {
+        let cfg = if !config_json.is_empty() && config_json.ends_with('\u{0}') {
             unsafe { std::ffi::CStr::from_ptr(config_json.as_ptr() as *const raw::c_char) }
         } else {
             str_buffer = std::ffi::CString::new(config_json).unwrap();
@@ -479,8 +480,8 @@ impl Booster {
         assert!(!out_result.is_null());
         let shape = unsafe { slice::from_raw_parts(out_shape, out_shape_dim as usize).to_vec() };
         let mut data_size = 1;
-        for i in 0..shape.len() {
-            data_size *= shape[i];
+        for dim in &shape {
+            data_size *= dim;
         }
         let data = unsafe { slice::from_raw_parts(out_result, data_size as usize).to_vec() };
 
