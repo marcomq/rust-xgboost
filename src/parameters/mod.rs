@@ -258,7 +258,7 @@ impl<T: PartialOrd + Display> Interval<T> {
             Inclusion::Closed => val.partial_cmp(&self.max).map(|o| o <= std::cmp::Ordering::Equal),
             Inclusion::Open => val.partial_cmp(&self.max).map(|o| o == std::cmp::Ordering::Less),
         };
-        if !max_cmp.is_none() || max_cmp == Some(false) {
+        if max_cmp.is_none() || max_cmp == Some(false) {
             return false; // Uncomparable or less than min
         }
         true
