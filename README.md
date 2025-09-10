@@ -7,7 +7,7 @@
 
 
 This is mostly a fork of https://github.com/davechallis/rust-xgboost but uses 
-another xgboost version and links it dynamically instead of linkit it static as the original library.
+another xgboost version and links it dynamically instead of linking it statically as in the original library.
 
 Rust bindings for the [XGBoost](https://xgboost.ai) gradient boosting library.
 
