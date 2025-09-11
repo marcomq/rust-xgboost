@@ -2,7 +2,7 @@ use bindgen;
 use std::env;
 use std::path::{Path, PathBuf};
 
-const GITHUB_URL: &str = "https://github.com/marcomq/rust-xgboost/raw/refs/tags/v3.0.1/xgboost-sys/lib/";
+const GITHUB_URL: &str = concat!(env!("CARGO_PKG_REPOSITORY"), "/raw/refs/heads/master/xgboost-sys/lib/");
 
 fn main() {
     let target = env::var("TARGET").unwrap();
