@@ -2,7 +2,11 @@ use bindgen;
 use std::env;
 use std::path::{Path, PathBuf};
 
-const GITHUB_URL: &str = concat!(env!("CARGO_PKG_REPOSITORY"), "/raw/refs/heads/master/xgboost-sys/lib/");
+// URL to prebuilt xgboost binaries
+const GITHUB_URL: &str = "https://github.com/marcomq/rust-xgboost/raw/refs/heads/master/xgboost-sys/lib/";
+
+// TODO: switch to this one here, doesn't work before merge, maybe this should point to a special branch:
+// const GITHUB_URL: &str = concat!(env!("CARGO_PKG_REPOSITORY"), "/raw/refs/heads/master/xgboost-sys/lib/");
 
 fn main() {
     let target = env::var("TARGET").unwrap();
