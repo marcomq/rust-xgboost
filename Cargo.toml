@@ -6,7 +6,7 @@ license = "MIT"
 repository = "https://github.com/davechallis/rust-xgboost"
 homepage = "https://github.com/davechallis/rust-xgboost"
 description = "Machine learning using XGBoost"
-documentation = "https://docs.rs/xgboost_lib"
+documentation = "https://docs.rs/xgboost"
 readme = "README.md"
 edition = "2021"
 
