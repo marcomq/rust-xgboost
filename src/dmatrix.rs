@@ -25,7 +25,7 @@ static KEY_BASE_MARGIN: &str = "base_margin";
 /// Load matrix from file in [LIBSVM](https://www.csie.ntu.edu.tw/~cjlin/libsvm/) or binary format.
 ///
 /// ```should_panic
-/// use xgb::DMatrix;
+/// use xgboost::DMatrix;
 ///
 /// let dmat = DMatrix::load(r#"{"uri": "somefile.txt?format=csv"}"#).unwrap();
 /// ```
@@ -33,7 +33,7 @@ static KEY_BASE_MARGIN: &str = "base_margin";
 /// ## Create from dense array
 ///
 /// ```
-/// use xgb::DMatrix;
+/// use xgboost::DMatrix;
 ///
 /// let data = &[1.0, 0.5, 0.2, 0.2,
 ///              0.7, 1.0, 0.1, 0.1,
@@ -56,7 +56,7 @@ static KEY_BASE_MARGIN: &str = "base_margin";
 /// ```
 ///
 /// ```
-/// use xgb::DMatrix;
+/// use xgboost::DMatrix;
 ///
 /// let indptr = &[0, 1, 2, 6];
 /// let indices = &[0, 2, 2, 0, 1, 2];
@@ -102,7 +102,7 @@ impl DMatrix {
     /// ```
     /// would be represented converted into a `DMatrix` with
     /// ```
-    /// use xgb::DMatrix;
+    /// use xgboost::DMatrix;
     ///
     /// let data = &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
     /// let num_rows = 3;

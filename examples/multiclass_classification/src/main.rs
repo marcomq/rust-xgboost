@@ -1,4 +1,4 @@
-extern crate xgb;
+extern crate xgboost;
 extern crate reqwest;
 extern crate env_logger;
 #[macro_use]
@@ -7,8 +7,8 @@ extern crate log;
 use std::path::Path;
 use std::io::{BufRead, BufReader, BufWriter};
 use std::fs::File;
-use xgb::{DMatrix, Booster};
-use xgb::parameters::{self, tree, learning::Objective};
+use xgboost::{DMatrix, Booster};
+use xgboost::parameters::{self, tree, learning::Objective};
 
 
 

@@ -1,17 +1,5 @@
-[![Actions Status](https://github.com/marcomq/rust-xgboost/workflows/Macos/badge.svg)](https://github.com/marcomq/rust-xgboost/actions/workflows/macos.yml)
-[![Actions Status](https://github.com/marcomq/rust-xgboost/workflows/Linux/badge.svg)](https://github.com/marcomq/rust-xgboost/actions/workflows/linux.yml)
-[![Actions Status](https://github.com/marcomq/rust-xgboost/workflows/Windows/badge.svg)](https://github.com/marcomq/rust-xgboost/actions/workflows/windows.yml)
-
-
 # rust-xgboost
-
-
-This is mostly a fork of https://github.com/davechallis/rust-xgboost but uses 
-another xgboost version and links it dynamically instead of linking it statically as in the original library.
-
 Rust bindings for the [XGBoost](https://xgboost.ai) gradient boosting library.
-
-Creates a shared library and uses Ninja instead of makefiles as generator.
 
 ## Requirements
 
@@ -29,9 +17,9 @@ On debian, you need `libclang-dev` (`apt install -y libclang-dev`)
 Basic usage example:
 
 ```rust
-extern crate xgb;
+extern crate xgboost;
 
-use xgb::{parameters, DMatrix, Booster};
+use xgboost::{parameters, DMatrix, Booster};
 
 fn main() {
     // training matrix with 5 training examples and 3 features
@@ -92,15 +80,13 @@ fn main() {
 }
 ```
 
-See the [examples](https://github.com/marcomq/rust-xgboost/tree/master/examples) directory for
+See the [examples](https://github.com/davechallis/rust-xgboost/tree/master/examples) directory for
 more detailed examples of different features.
 
 ## Status
 
-The version number is just an indicator that xboost 3.0.0 is used.
-
 This is still a very early stage of development, so the API is changing as usability issues occur,
-or new features are supported. This is still expected to be compatible to an earlier rust-xgboost library.
+or new features are supported. It is still expected to be compatible to an earlier rust-xgboost library.
 
 Builds against XGBoost 3.0.0.
 
@@ -121,7 +107,7 @@ XGBOOST_LIB_DIR=${HOMEBREW_PREFIX}/opt/xgboost/lib
 
 If you want to use it by yourself, you can disable the use_prebuild_xgb feature:
 ```
-xgb = { version = "3",  default-features = false, features=["local_build"] }
+xgboost = { version = "3",  default-features = false, features=["local_build"] }
 ```
 This would require `cmake` and `ninja-build` as build dependencies.
 
