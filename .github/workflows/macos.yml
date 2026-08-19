@@ -16,7 +16,7 @@ jobs:
         submodules: recursive
         
     - name: Install dependencies
-      run: brew install libomp
+      run: brew install libomp ninja
 
     - name: Build
       run: cargo build --verbose

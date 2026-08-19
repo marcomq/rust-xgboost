@@ -14,9 +14,11 @@ jobs:
       with:
         submodules: recursive
 
+    # Windows stays on the prebuilt-download path until binaries built from the
+    # pinned submodule are published (MSVC source build is untested in this CI).
     - name: Build
-      run: cargo build --verbose
+      run: cargo build --verbose --no-default-features --features use_prebuilt_xgb
 
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test --verbose --no-default-features --features use_prebuilt_xgb
       

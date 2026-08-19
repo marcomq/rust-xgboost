@@ -7,7 +7,7 @@ use std::default::Default;
 use super::Interval;
 
 /// Learning objective used when training a booster model.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub enum Objective {
     /// Linear regression.
     #[default]
@@ -22,18 +22,9 @@ pub enum Objective {
     /// Logistic regression for binary classification, outputs scores before logistic transformation.
     BinaryLogisticRaw,
 
-    /// GPU version of [`RegLinear`](#variant.RegLinear).
-    GpuRegLinear,
-
-    /// GPU version of [`RegLogistic`](#variant.RegLogistic).
-    GpuRegLogistic,
-
-    /// GPU version of [`RegBinaryLogistic`](#variant.RegBinaryLogistic).
-    GpuBinaryLogistic,
-
-    /// GPU version of [`RegBinaryLogisticRaw`](#variant.RegBinaryLogisticRaw).
-    GpuBinaryLogisticRaw,
-
+    // The `gpu:*` objective variants were removed: the prefix was dropped in
+    // XGBoost 1.0 and 3.x rejects those names outright ("Unknown objective
+    // function"). GPU training is selected via the `device` parameter instead.
     /// Poisson regression for count data, outputs mean of poisson distribution.
     CountPoisson,
 
@@ -68,34 +59,38 @@ pub enum Objective {
     ///
     /// Set to `None` to use XGBoost's default (currently `1.5`).
     RegTweedie(Option<f32>),
-}
 
-impl Copy for Objective {}
+    /// Quantile regression with the pinball loss.
+    ///
+    /// Takes the list of quantiles to estimate (each in `(0, 1)`); the trained
+    /// model produces one prediction column per quantile, so `predict` output
+    /// has length `num_rows * alphas.len()` (row-major).
+    RegQuantile(Vec<f32>),
 
-impl Clone for Objective {
-    fn clone(&self) -> Self {
-        *self
-    }
+    /// Expectile regression (XGBoost 3.3+).
+    ///
+    /// Takes the list of expectiles to estimate (each in `(0, 1)`); like
+    /// [`RegQuantile`](Self::RegQuantile), the model produces one prediction
+    /// column per expectile.
+    RegExpectile(Vec<f32>),
 }
 
 impl std::fmt::Display for Objective {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let result = match *self {
-            Objective::RegLinear => "reg:squarederror".to_owned(),
-            Objective::RegLogistic => "reg:logistic".to_owned(),
-            Objective::BinaryLogistic => "binary:logistic".to_owned(),
-            Objective::BinaryLogisticRaw => "binary:logitraw".to_owned(),
-            Objective::GpuRegLinear => "gpu:reg:squarederror".to_owned(),
-            Objective::GpuRegLogistic => "gpu:reg:logistic".to_owned(),
-            Objective::GpuBinaryLogistic => "gpu:binary:logistic".to_owned(),
-            Objective::GpuBinaryLogisticRaw => "gpu:binary:logitraw".to_owned(),
-            Objective::CountPoisson => "count:poisson".to_owned(),
-            Objective::SurvivalCox => "survival:cox".to_owned(),
-            Objective::MultiSoftmax(_) => "multi:softmax".to_owned(), // num_class conf must also be set
-            Objective::MultiSoftprob(_) => "multi:softprob".to_owned(), // num_class conf must also be set
-            Objective::RankPairwise => "rank:pairwise".to_owned(),
-            Objective::RegGamma => "reg:gamma".to_owned(),
-            Objective::RegTweedie(_) => "reg:tweedie".to_owned(),
+        let result = match self {
+            Objective::RegLinear => "reg:squarederror",
+            Objective::RegLogistic => "reg:logistic",
+            Objective::BinaryLogistic => "binary:logistic",
+            Objective::BinaryLogisticRaw => "binary:logitraw",
+            Objective::CountPoisson => "count:poisson",
+            Objective::SurvivalCox => "survival:cox",
+            Objective::MultiSoftmax(_) => "multi:softmax", // num_class conf must also be set
+            Objective::MultiSoftprob(_) => "multi:softprob", // num_class conf must also be set
+            Objective::RankPairwise => "rank:pairwise",
+            Objective::RegGamma => "reg:gamma",
+            Objective::RegTweedie(_) => "reg:tweedie",
+            Objective::RegQuantile(_) => "reg:quantileerror", // quantile_alpha must also be set
+            Objective::RegExpectile(_) => "reg:expectileerror", // expectile_alpha must also be set
         };
         write!(f, "{}", result)
     }
@@ -123,10 +118,14 @@ pub enum EvaluationMetric {
     /// Negative log-likelihood.
     LogLoss,
 
-    // TODO: use error as field if set to 0.5
-    /// Binary classification error rate. It is calculated as #(wrong cases)/#(all cases).
+    /// Binary classification error rate with default threshold of 0.5.
+    /// It is calculated as #(wrong cases)/#(all cases).
+    BinaryError,
+
+    /// Binary classification error rate with custom threshold.
+    /// It is calculated as #(wrong cases)/#(all cases).
     /// For the predictions, the evaluation will regard the instances with prediction value larger than
-    /// given threshold as positive instances, and the others as negative instances.
+    /// the given threshold as positive instances, and the others as negative instances.
     BinaryErrorRate(f32),
 
     /// Multiclass classification error rate. It is calculated as #(wrong cases)/#(all cases).
@@ -176,8 +175,14 @@ pub enum EvaluationMetric {
     /// Residual deviance for Gamma regression.
     GammaDeviance,
 
-    /// Negative log likelihood for Tweedie regression (at a specified value of the tweedie_variance_power parameter).
-    TweedieLogLoss,
+    /// Negative log likelihood for Tweedie regression, at the given value of
+    /// the variance power `rho`.
+    ///
+    /// XGBoost requires the metric in `tweedie-nloglik@rho` form (the bare name
+    /// is rejected with "must be in format tweedie-nloglik@rho"); `rho` must be
+    /// in the range [1, 2) and would typically match the objective's
+    /// `tweedie_variance_power`.
+    TweedieLogLoss(f32),
 }
 
 impl std::fmt::Display for EvaluationMetric {
@@ -186,13 +191,8 @@ impl std::fmt::Display for EvaluationMetric {
             EvaluationMetric::RMSE => "rmse".to_owned(),
             EvaluationMetric::MAE => "mae".to_owned(),
             EvaluationMetric::LogLoss => "logloss".to_owned(),
-            EvaluationMetric::BinaryErrorRate(t) => {
-                if (t - 0.5).abs() < f32::EPSILON {
-                    "error".to_owned()
-                } else {
-                    format!("error@{}", t)
-                }
-            }
+            EvaluationMetric::BinaryError => "error".to_owned(),
+            EvaluationMetric::BinaryErrorRate(t) => format!("error@{}", t),
             EvaluationMetric::MultiClassErrorRate => "merror".to_owned(),
             EvaluationMetric::MultiClassLogLoss => "mlogloss".to_owned(),
             EvaluationMetric::AUC => "auc".to_owned(),
@@ -208,7 +208,7 @@ impl std::fmt::Display for EvaluationMetric {
             EvaluationMetric::GammaLogLoss => "gamma-nloglik".to_owned(),
             EvaluationMetric::CoxLogLoss => "cox-nloglik".to_owned(),
             EvaluationMetric::GammaDeviance => "gamma-deviance".to_owned(),
-            EvaluationMetric::TweedieLogLoss => "tweedie-nloglik".to_owned(),
+            EvaluationMetric::TweedieLogLoss(rho) => format!("tweedie-nloglik@{}", rho),
         };
         write!(f, "{}", result)
     }
@@ -229,8 +229,12 @@ pub struct LearningTaskParameters {
 
     /// Initial prediction score, i.e. global bias.
     ///
-    /// *default*: 0.5
-    base_score: f32,
+    /// *default*: `None` — the parameter is not sent to XGBoost, which then
+    /// estimates the intercept from the training data (`boost_from_average`,
+    /// the XGBoost 2.0+/Python default). Setting an explicit value disables
+    /// that estimation, matching pre-2.0 behaviour (where the default was 0.5).
+    #[builder(setter(strip_option))]
+    base_score: Option<f32>,
 
     /// Metrics to use on evaluation data sets during training.
     ///
@@ -247,7 +251,7 @@ impl Default for LearningTaskParameters {
     fn default() -> Self {
         LearningTaskParameters {
             objective: Objective::default(),
-            base_score: 0.5,
+            base_score: None,
             eval_metrics: Metrics::Auto,
             seed: 0,
         }
@@ -259,16 +263,25 @@ impl LearningTaskParameters {
         &self.objective
     }
 
-    pub fn set_objective<T: Into<Objective>>(&mut self, objective: T) {
-        self.objective = objective.into();
+    /// Set the learning objective.
+    ///
+    /// Runs the same objective-specific validation as the builder (e.g.
+    /// quantile/expectile alpha lists non-empty and in `(0, 1)`), so invalid
+    /// values fail here with a clear message instead of an opaque C++ `CHECK`
+    /// at the first training update.
+    pub fn set_objective<T: Into<Objective>>(&mut self, objective: T) -> Result<(), String> {
+        let objective = objective.into();
+        validate_objective(&objective)?;
+        self.objective = objective;
+        Ok(())
     }
 
-    pub fn base_score(&self) -> f32 {
+    pub fn base_score(&self) -> Option<f32> {
         self.base_score
     }
 
-    pub fn set_base_score(&mut self, base_score: f32) {
-        self.base_score = base_score;
+    pub fn set_base_score<T: Into<Option<f32>>>(&mut self, base_score: T) {
+        self.base_score = base_score.into();
     }
 
     pub fn eval_metrics(&self) -> &Metrics {
@@ -287,19 +300,48 @@ impl LearningTaskParameters {
         self.seed = seed;
     }
 
+    /// Render an alpha list as `[a,b,...]` for XGBoost's ParamArray parser.
+    fn alpha_list(alphas: &[f32]) -> String {
+        let mut s = String::from("[");
+        for (i, a) in alphas.iter().enumerate() {
+            if i > 0 {
+                s.push(',');
+            }
+            s.push_str(&a.to_string());
+        }
+        s.push(']');
+        s
+    }
+
     pub(crate) fn as_string_pairs(&self) -> Vec<(String, String)> {
         let mut v = Vec::new();
 
-        if let Objective::MultiSoftmax(n) = self.objective {
-            v.push(("num_class".to_owned(), n.to_string()));
-        } else if let Objective::MultiSoftprob(n) = self.objective {
-            v.push(("num_class".to_owned(), n.to_string()));
-        } else if let Objective::RegTweedie(Some(n)) = self.objective {
-            v.push(("tweedie_variance_power".to_owned(), n.to_string()));
+        match &self.objective {
+            Objective::MultiSoftmax(n) | Objective::MultiSoftprob(n) => {
+                v.push(("num_class".to_owned(), n.to_string()));
+            }
+            Objective::RegTweedie(Some(n)) => {
+                v.push(("tweedie_variance_power".to_owned(), n.to_string()));
+            }
+            // The alpha lists are sent in `[a, b, ...]` form: XGBoost's
+            // ParamArray parser accepts a JSON-style array (see the bundled
+            // src/common/param_array.cc), matching what the Python binding
+            // sends for lists.
+            Objective::RegQuantile(alphas) => {
+                v.push(("quantile_alpha".to_owned(), Self::alpha_list(alphas)));
+            }
+            Objective::RegExpectile(alphas) => {
+                v.push(("expectile_alpha".to_owned(), Self::alpha_list(alphas)));
+            }
+            _ => {}
         }
 
         v.push(("objective".to_owned(), self.objective.to_string()));
-        v.push(("base_score".to_owned(), self.base_score.to_string()));
+        // Only sent when explicitly set: passing base_score disables XGBoost
+        // 3.x's automatic intercept estimation (boost_from_average).
+        if let Some(base_score) = self.base_score {
+            v.push(("base_score".to_owned(), base_score.to_string()));
+        }
         v.push(("seed".to_owned(), self.seed.to_string()));
 
         if let Metrics::Custom(eval_metrics) = &self.eval_metrics {
@@ -314,9 +356,38 @@ impl LearningTaskParameters {
 
 impl LearningTaskParametersBuilder {
     fn validate(&self) -> Result<(), String> {
-        if let Some(Objective::RegTweedie(variance_power)) = self.objective {
-            Interval::new_closed_closed(1.0, 2.0).validate(&variance_power, "tweedie_variance_power")?;
+        if let Some(objective) = &self.objective {
+            validate_objective(objective)?;
         }
         Ok(())
     }
+}
+
+/// Objective-specific parameter validation, shared by the builder and
+/// [`LearningTaskParameters::set_objective`] so neither entry point can smuggle
+/// values XGBoost only rejects (opaquely) at configure time.
+fn validate_objective(objective: &Objective) -> Result<(), String> {
+    match objective {
+        Objective::RegTweedie(variance_power) => {
+            Interval::new_closed_closed(1.0, 2.0).validate(variance_power, "tweedie_variance_power")
+        }
+        Objective::RegQuantile(alphas) => validate_alphas(alphas, "quantile_alpha"),
+        Objective::RegExpectile(alphas) => validate_alphas(alphas, "expectile_alpha"),
+        _ => Ok(()),
+    }
+}
+
+/// Alpha lists must be non-empty with every value strictly inside (0, 1);
+/// XGBoost rejects values outside that range at configure time, but with a
+/// far less direct error message.
+fn validate_alphas(alphas: &[f32], name: &str) -> Result<(), String> {
+    if alphas.is_empty() {
+        return Err(format!("{} must contain at least one value", name));
+    }
+    for a in alphas {
+        if !(*a > 0.0 && *a < 1.0) {
+            return Err(format!("{} values must be in (0, 1), got {}", name, a));
+        }
+    }
+    Ok(())
 }

@@ -1,25 +1,63 @@
 [package]
 name = "xgb"
-version = "3.0.6"
-authors = ["Dave Challis <dave@suicas.net>", "Marco Mengelkoch"]
+version = "3.3.0"
+authors = ["Dave Challis <dave@suicas.net>", "Marco Mengelkoch", "Felix Agene <agene001@umn.edu>"]
 license = "MIT"
-repository = "https://github.com/marcomq/rust-xgboost"
-homepage = "https://github.com/marcomq/rust-xgboost"
+repository = "https://github.com/agene0001/rust-xgboost"
+homepage = "https://github.com/agene0001/rust-xgboost"
 description = "Machine learning using XGBoost"
-documentation = "https://docs.rs/xgboost_lib"
+documentation = "https://github.com/agene0001/rust-xgboost"
 readme = "README.md"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
-xgboost-sys = { package = "xgboost_lib-sys", path = "xgboost-sys", version = "3.0.5" }
-libc = "0.2"
-derive_builder = "0.20"
-log = "0.4"
-tempfile = "3.15"
-indexmap = "2.7"
+# default-features = false is load-bearing: without it the sys crate's default
+# (local_build) stays enabled even when this crate is built with
+# --no-default-features --features use_prebuilt_xgb, running both the binary
+# download AND the cmake source build. Feature selection must flow only
+# through this crate's feature list below.
+xgboost-sys = { package = "xgboost_lib-sys", path = "xgboost-sys", version = "3.3.0", default-features = false }
+libc = "0.2.189"
+derive_builder = "0.20.2"
+log = "0.4.33"
+tempfile = "3.27.0"
+indexmap = "2.14.0"
 
 [features]
 use_prebuilt_xgb = ["xgboost-sys/use_prebuilt_xgb"]
 local_build = ["xgboost-sys/local_build"]
 cuda = ["xgboost-sys/cuda"]
-default  = ["use_prebuilt_xgb"]
+# Build libxgboost from the pinned submodule by default so the headers used for
+# bindgen and the runtime library can never disagree. Use
+# `--no-default-features --features use_prebuilt_xgb` for the download path.
+default = ["local_build"]
+
+# Perf-focused crate: default release profile (lto=false, 16 codegen units)
+# leaves cross-crate inlining on the table. The hot path lives in libxgboost,
+# so the gain here is small — but it is free, and it removes a confound when
+# comparing this wrapper against other bindings. bench inherits release, so
+# criterion measures the same codegen users ship.
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
+[lints.rust]
+# bench_deprecated/dmatrix_benchmark gate manual comparison modes behind
+# features this crate deliberately does not declare (deprecated_api needs a
+# pre-3.1 XGBoost to even compile). Teach check-cfg they are expected so
+# builds don't warn about them.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("deprecated_api", "print_table"))'] }
+
+[dev-dependencies]
+criterion = "0.8.2"
+
+[[bench]]
+name = "dmatrix_benchmark"
+harness = false
+
+[[bench]]
+name = "predict_benchmark"
+harness = false
+
+[[example]]
+name = "bench_table"

@@ -35,6 +35,9 @@ pub enum BoosterType {
     ///
     /// Construct parameters using
     /// [LinearBoosterParametersBuilder](linear/struct.LinearBoosterParametersBuilder.html).
+    ///
+    /// Note: XGBoost 3.3 deprecated `booster=gblinear` and plans to remove it
+    /// in a future release; training still works but logs a warning.
     Linear(linear::LinearBoosterParameters),
 
     /// Use a [DART](https://xgboost.readthedocs.io/en/latest/tutorials/dart.html) booster
@@ -42,6 +45,11 @@ pub enum BoosterType {
     ///
     /// Construct parameters using
     /// [DartBoosterParametersBuilder](dart/struct.DartBoosterParametersBuilder.html).
+    ///
+    /// Note: XGBoost 3.3 folded DART into the tree booster and deprecated
+    /// `booster=dart` as a separate booster name; it is internally remapped to
+    /// `gbtree` (with the dropout parameters applied) and logs a one-time
+    /// warning. Behaviour is otherwise unchanged.
     Dart(dart::DartBoosterParameters),
 }
 

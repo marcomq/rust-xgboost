@@ -1,0 +1,200 @@
+name: Release XGBoost binaries
+
+# Builds libxgboost from the pinned submodule on every supported target and
+# publishes the libraries as GitHub release assets. xgboost-sys's
+# `use_prebuilt_xgb` feature downloads these; build.rs derives the tag it looks
+# for from CARGO_PKG_VERSION, so the tag released here MUST be
+# v<xgboost-sys version>. The `verify` job below enforces that.
+#
+# Trigger by pushing a `v*` tag, or manually via workflow_dispatch — leave the
+# tag input empty to use the correct one for the current crate version.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (leave empty to derive v<crate version> — recommended)"
+        required: false
+        default: ""
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  # Single source of truth for the release tag, and a hard gate on the invariant
+  # that build.rs depends on: crate version == bundled XGBoost version == tag.
+  # Publishing a mismatched tag would leave `use_prebuilt_xgb` builds silently
+  # downloading nothing (hard error) or, worse, stale binaries.
+  verify:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Resolve and verify release tag
+        id: resolve
+        run: |
+          set -euo pipefail
+
+          crate_version="$(sed -n 's/^version = "\(.*\)"/\1/p' xgboost-sys/Cargo.toml | head -1)"
+          root_version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
+
+          header=xgboost-sys/xgboost/include/xgboost/version_config.h
+          ver_field() { sed -n "s/^#define $1 \([0-9]*\).*/\1/p" "$header" | head -1; }
+          bundled="$(ver_field XGBOOST_VER_MAJOR).$(ver_field XGBOOST_VER_MINOR).$(ver_field XGBOOST_VER_PATCH)"
+
+          # push of a v* tag -> that tag; dispatch -> input, else derived
+          if [ "${{ github.event_name }}" = "push" ]; then
+            tag="${{ github.ref_name }}"
+          elif [ -n "${{ inputs.tag }}" ]; then
+            tag="${{ inputs.tag }}"
+          else
+            tag="v${crate_version}"
+          fi
+
+          echo "xgboost-sys version : $crate_version"
+          echo "root crate version  : $root_version"
+          echo "bundled XGBoost     : $bundled"
+          echo "release tag         : $tag"
+
+          fail=0
+          if [ "$crate_version" != "$bundled" ]; then
+            echo "::error::xgboost-sys version ($crate_version) != bundled XGBoost ($bundled). Bump Cargo.toml to match the submodule (or repin the submodule)."
+            fail=1
+          fi
+          if [ "$root_version" != "$crate_version" ]; then
+            echo "::error::root crate version ($root_version) != xgboost-sys version ($crate_version). Keep both in sync."
+            fail=1
+          fi
+          if [ "$tag" != "v${crate_version}" ]; then
+            echo "::error::tag $tag does not match v${crate_version}. build.rs derives the asset URL from CARGO_PKG_VERSION, so assets published under $tag would never be found. Re-run with an empty tag input to use v${crate_version}."
+            fail=1
+          fi
+          [ "$fail" -eq 0 ] || exit 1
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: verify
+    name: build (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: mac_arm64
+          - os: ubuntu-latest
+            target: linux_amd64
+          - os: ubuntu-22.04-arm
+            target: linux_arm64
+          - os: windows-latest
+            target: win_amd64
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install libomp ninja
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Configure
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cmake -S xgboost-sys/xgboost -B build -DCMAKE_BUILD_TYPE=Release
+          else
+            cmake -S xgboost-sys/xgboost -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          fi
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      # Flat asset names (<target>-<file>) because GitHub release assets have
+      # no directory structure. xgboost's CMake links the main library into
+      # <source-dir>/lib (not the build dir); libdmlc.a stays under build/,
+      # so both roots are searched.
+      - name: Collect libraries
+        run: |
+          mkdir -p dist
+          collect() {
+            src="$(find build xgboost-sys/xgboost/lib -name "$1" 2>/dev/null | head -1)"
+            if [ -z "$src" ]; then
+              echo "ERROR: $1 not found under build/ or xgboost-sys/xgboost/lib/"
+              exit 1
+            fi
+            echo "collecting $src"
+            cp "$src" "dist/${{ matrix.target }}-$1"
+          }
+          case "${{ matrix.target }}" in
+            mac_arm64)
+              collect libxgboost.dylib
+              collect libdmlc.a
+              ;;
+            linux_*)
+              collect libxgboost.so
+              collect libdmlc.a
+              ;;
+            win_amd64)
+              collect xgboost.dll
+              collect xgboost.lib
+              ;;
+          esac
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: dist/*
+
+  release:
+    needs: [verify, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      # Guard against a partial publish: build.rs hard-errors on a missing
+      # asset, so shipping an incomplete set breaks `use_prebuilt_xgb` for that
+      # platform only, which is easy to miss until someone builds on it.
+      - name: Check the full asset set is present
+        run: |
+          set -euo pipefail
+          expected="
+          mac_arm64-libxgboost.dylib
+          mac_arm64-libdmlc.a
+          linux_amd64-libxgboost.so
+          linux_amd64-libdmlc.a
+          linux_arm64-libxgboost.so
+          linux_arm64-libdmlc.a
+          win_amd64-xgboost.dll
+          win_amd64-xgboost.lib
+          "
+          fail=0
+          for f in $expected; do
+            if [ ! -s "dist/$f" ]; then
+              echo "::error::missing or empty release asset: $f"
+              fail=1
+            fi
+          done
+          ls -la dist
+          [ "$fail" -eq 0 ] || exit 1
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.verify.outputs.tag }}
+          files: dist/*
