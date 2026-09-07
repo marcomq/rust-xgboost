@@ -130,12 +130,16 @@ impl Booster {
     /// Format is "ubj" when binary, otherwise "json"
     pub fn save_buffer(&self, binary: bool) -> XGBResult<Vec<u8>> {
         trace!("Writing Booster to buffer");
-        let config = format!("{{\"format\":\"{}\"}}", if binary { "ubj" } else { "json" });
+        // Must be NUL-terminated: XGBoost treats this as a C string and calls
+        // strlen on it. Passing a bare Rust String's bytes (no trailing NUL)
+        // makes XGBoost read past the end of the allocation.
+        let config = ffi::CString::new(format!("{{\"format\":\"{}\"}}", if binary { "ubj" } else { "json" }))
+            .map_err(|e| XGBError::new(e.to_string()))?;
         let mut out_len: xgboost_sys::bst_ulong = 0;
         let mut out_buffer = ptr::null();
         xgb_call!(xgboost_sys::XGBoosterSaveModelToBuffer(
             self.handle,
-            config.as_bytes().as_ptr() as *const raw::c_char,
+            config.as_ptr() as *const raw::c_char,
             &mut out_len,
             &mut out_buffer
         ))?;
