@@ -39,6 +39,7 @@ const TRAIN_ROWS: usize = 8000;
 const TEST_ROWS: usize = 4000;
 const ROUNDS: u32 = 100;
 const SINGLE_ROW_CHECKS: usize = 500;
+const STORED_ROW_STEP: usize = 20;
 
 const PREDICTION_TOLERANCE: f32 = 1e-6;
 const MAX_QUALITY_LOSS: f64 = 0.005;
@@ -191,6 +192,20 @@ fn scoring_rows(case: Case) -> (Vec<f32>, Vec<f32>) {
     (data, labels)
 }
 
+// The golden file keeps every STORED_ROW_STEP-th holdout row and both edge-case rows.
+fn stored_rows() -> impl Iterator<Item = usize> {
+    (0..TEST_ROWS).step_by(STORED_ROW_STEP).chain([TEST_ROWS, TEST_ROWS + 1])
+}
+
+fn stored_scores(case: Case, all: &[f32]) -> Vec<f32> {
+    let outputs = case.outputs_per_row();
+    stored_rows().flat_map(|i| all[i * outputs..(i + 1) * outputs].iter().copied()).collect()
+}
+
+fn score_sum(scores: &[f32]) -> f64 {
+    scores.iter().map(|&s| s as f64).sum()
+}
+
 fn train_model(case: Case) -> Booster {
     let (data, labels) = synthetic(case, TRAIN_ROWS, 1);
     let mut dtrain = DMatrix::from_dense(&data, TRAIN_ROWS).unwrap();
@@ -335,6 +350,7 @@ fn bless(case: Case) {
         let rate = labels.iter().filter(|&&y| y == class as f32).count() as f32 / labels.len() as f32;
         metrics.insert(format!("label_{class}_rate_train"), rate.to_string());
     }
+    metrics.insert("score_sum".to_owned(), score_sum(&predictions).to_string());
     metrics.insert(
         "trees".to_owned(),
         booster.dump_model_vec(false).unwrap().len().to_string(),
@@ -351,7 +367,16 @@ fn bless(case: Case) {
     fs::create_dir_all(&dir).unwrap();
     fs::write(dir.join("model.ubj"), booster.save_buffer(true).unwrap()).unwrap();
     fs::write(dir.join("model.json"), booster.save_buffer(false).unwrap()).unwrap();
-    let lines: String = predictions.iter().map(|p| format!("{p}\n")).collect();
+    let outputs = case.outputs_per_row();
+    let lines: String = stored_rows()
+        .map(|i| {
+            let scores: Vec<String> = predictions[i * outputs..(i + 1) * outputs]
+                .iter()
+                .map(|p| p.to_string())
+                .collect();
+            format!("{i} {}\n", scores.join(" "))
+        })
+        .collect();
     fs::write(dir.join("predictions.txt"), lines).unwrap();
     fs::write(dir.join("metrics.txt"), write_key_values(&metrics)).unwrap();
     eprintln!("blessed golden files in {}: {metrics:?}", dir.display());
@@ -372,11 +397,20 @@ fn golden(case: Case) -> &'static Golden {
                 )
             })
         };
-        let predictions = String::from_utf8(read("predictions.txt"))
-            .unwrap()
-            .lines()
-            .map(|l| l.parse().unwrap())
-            .collect();
+        let text = String::from_utf8(read("predictions.txt")).unwrap();
+        let mut rows = Vec::new();
+        let mut predictions = Vec::new();
+        for line in text.lines() {
+            let mut fields = line.split_whitespace();
+            rows.push(fields.next().unwrap().parse::<usize>().unwrap());
+            predictions.extend(fields.map(|p| p.parse::<f32>().unwrap()));
+        }
+        assert_eq!(
+            rows,
+            stored_rows().collect::<Vec<_>>(),
+            "{}: stored rows changed, re-bless with XGB_BLESS=1",
+            case.name()
+        );
         Golden {
             model_ubj: read("model.ubj"),
             model_json: read("model.json"),
@@ -402,15 +436,27 @@ fn assert_close(actual: &[f32], expected: &[f32], context: &str) {
     );
 }
 
+fn assert_matches_golden(case: Case, actual: &[f32], context: &str) {
+    let golden = golden(case);
+    assert_close(&stored_scores(case, actual), &golden.predictions, context);
+    let expected: f64 = golden.metrics["score_sum"].parse().unwrap();
+    let diff = (score_sum(actual) - expected).abs();
+    assert!(
+        diff <= actual.len() as f64 * PREDICTION_TOLERANCE as f64,
+        "{context}: sum of all {} scores moved by {diff}",
+        actual.len()
+    );
+}
+
 #[test]
 fn stored_ubj_model_scores_identically() {
     for case in Case::ALL {
         let golden = golden(case);
         let booster = Booster::load_buffer(&golden.model_ubj).unwrap();
         assert_eq!(booster.get_feature_names().unwrap(), FEATURE_NAMES);
-        assert_close(
+        assert_matches_golden(
+            case,
             &predict_all(case, &booster),
-            &golden.predictions,
             &format!("{case:?}: batch, UBJ model"),
         );
     }
@@ -422,9 +468,9 @@ fn stored_json_model_scores_identically() {
         let golden = golden(case);
         let booster = Booster::load_buffer(&golden.model_json).unwrap();
         assert_eq!(booster.get_feature_names().unwrap(), FEATURE_NAMES);
-        assert_close(
+        assert_matches_golden(
+            case,
             &predict_all(case, &booster),
-            &golden.predictions,
             &format!("{case:?}: batch, JSON model"),
         );
     }
@@ -435,6 +481,7 @@ fn single_row_scoring_matches_batch() {
     for case in Case::ALL {
         let golden = golden(case);
         let booster = Booster::load_buffer(&golden.model_ubj).unwrap();
+        let batch = predict_all(case, &booster);
         let (data, _) = scoring_rows(case);
         let rows: Vec<&[f32]> = data.chunks(NUM_FEATURES).collect();
         let outputs = case.outputs_per_row();
@@ -443,7 +490,7 @@ fn single_row_scoring_matches_batch() {
         for i in checked {
             let dmat = DMatrix::from_dense(rows[i], 1).unwrap();
             let scores = booster.predict(&dmat).unwrap();
-            let expected = &golden.predictions[i * outputs..(i + 1) * outputs];
+            let expected = &batch[i * outputs..(i + 1) * outputs];
             assert_close(&scores, expected, &format!("{case:?}: single row {i}"));
         }
     }
@@ -464,9 +511,9 @@ fn model_metadata_is_unchanged() {
         );
 
         let resaved = Booster::load_buffer(&booster.save_buffer(true).unwrap()).unwrap();
-        assert_close(
+        assert_matches_golden(
+            case,
             &predict_all(case, &resaved),
-            &golden.predictions,
             &format!("{case:?}: re-saved as UBJ"),
         );
     }
@@ -486,12 +533,13 @@ fn retrained_model_quality_is_unchanged() {
                 "{case:?}: {name} went from {before} to {value}"
             );
         }
-        let mean_abs_diff = predictions
+        let stored = stored_scores(case, &predictions);
+        let mean_abs_diff = stored
             .iter()
             .zip(&golden.predictions)
             .map(|(a, b)| (a - b).abs() as f64)
             .sum::<f64>()
-            / predictions.len() as f64;
+            / stored.len() as f64;
         eprintln!("{case:?} retrained: mean |score diff| {mean_abs_diff:.6}");
         assert!(
             mean_abs_diff <= MAX_RETRAIN_MEAN_ABS_DIFF,

@@ -13,8 +13,8 @@ The files were written by the **trusted** version:
 | File | Content |
 |---|---|
 | `<model>/model.ubj`, `<model>/model.json` | The trained model in both formats |
-| `<model>/predictions.txt` | Its scores on 4000 holdout rows, plus an all-missing row and an all-zero row |
-| `<model>/metrics.txt` | Holdout quality (AUC and logloss, or accuracy and mlogloss), label rates, tree count, and the model JSON fields that serving code commonly reads |
+| `<model>/predictions.txt` | Its scores on every 20th of the 4000 holdout rows, plus an all-missing row and an all-zero row (`row score...` per line) |
+| `<model>/metrics.txt` | Holdout quality (AUC and logloss, or accuracy and mlogloss), the sum of all scores, label rates, tree count, and the model JSON fields that serving code commonly reads |
 | `perf_<os>_<arch>_<profile>.txt` | Latency and throughput baseline for both models. Machine-specific, so not committed |
 
 ## What the tests check

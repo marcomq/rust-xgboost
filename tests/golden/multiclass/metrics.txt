@@ -8,5 +8,6 @@ mlogloss=0.923795764739037
 num_class=4
 num_parallel_tree=1
 objective=multi:softprob
+score_sum=4002.0000014933466
 trees=400
 version=[3,0,0]
