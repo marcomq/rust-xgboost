@@ -245,9 +245,15 @@ fn main() {
                 for file in files {
                     fetch_lib(platform, file, &deps_path).unwrap();
                 }
-                // Also what `cargo run`/`cargo test` load: the profile dir is on
-                // their loader path, and deps holds only the linker's name.
-                stage_lib_next_to_exe(&deps_path.join(files[0]), &out_dir, &lib_major);
+                let lib = deps_path.join(files[0]);
+                // deps holds only the linker's name. Doctests run from a temp
+                // dir with just the link-search dirs on their loader path — not
+                // the profile dir staged below — so deps needs the loader name.
+                if let Some(name) = loader_name(files[0], &lib_major) {
+                    copy_atomic(&lib, &deps_path.join(name)).unwrap();
+                }
+                // Also what `cargo run`/`cargo test` binaries load.
+                stage_lib_next_to_exe(&lib, &out_dir, &lib_major);
             } else {
                 if let Ok(homebrew_path) = std::env::var("HOMEBREW_PREFIX") {
                     let xgboost_lib_dir = format!("{}/opt/xgboost/lib", &homebrew_path);
