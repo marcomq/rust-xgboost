@@ -1411,8 +1411,8 @@ mod tests {
             .unwrap();
         let booster = Booster::train(&training_params).unwrap();
 
-        assert_eq!(
-            booster.dump_model(true, None).unwrap(),
+        assert_dump_approx_eq(
+            &booster.dump_model(true, None).unwrap(),
             "0:[f29<2.00001001] yes=1,no=2,missing=2,gain=4000.53101,cover=1628.25
 	1:[f109<2.00001001] yes=3,no=4,missing=4,gain=198.173828,cover=703.75
 		3:leaf=1.85964918,cover=13.25
@@ -1484,7 +1484,23 @@ mod tests {
 	2:[f29<2.00001001] yes=5,no=6,missing=6,gain=10.1308851,cover=43.0564575
 		5:leaf=-0.734555721,cover=20.7280827
 		6:leaf=0.217203051,cover=22.3283749
-"
+",
         );
+    }
+
+    /// Compares tree dumps field by field; numbers may differ in the last float digits between
+    /// XGBoost versions (e.g. the prebuilt library vs. a `local_build` of the submodule).
+    fn assert_dump_approx_eq(actual: &str, expected: &str) {
+        let fields = |s: &str| s.split(['=', ',', '\n']).map(str::to_owned).collect::<Vec<_>>();
+        let (actual, expected) = (fields(actual), fields(expected));
+        assert_eq!(actual.len(), expected.len(), "dump structure differs");
+        for (a, e) in actual.iter().zip(&expected) {
+            match (a.parse::<f64>(), e.parse::<f64>()) {
+                (Ok(a_num), Ok(e_num)) => {
+                    assert!((a_num - e_num).abs() <= 1e-5 * e_num.abs().max(1.0), "{a} != {e}")
+                }
+                _ => assert_eq!(a, e),
+            }
+        }
     }
 }
