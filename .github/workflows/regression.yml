@@ -59,7 +59,7 @@ jobs:
         working-directory: baseline
         run: |
           # Same test code and same golden models on both sides, only the library differs.
-          rm -rf tests/golden && cp -R ../head/tests/golden tests/golden
+          rm -rf tests/golden && mkdir -p tests && cp -R ../head/tests/golden tests/golden
           cp ../head/tests/regression.rs tests/regression.rs
           grep -q '^serde_json' Cargo.toml || cargo add --dev serde_json@1
           XGB_BLESS_PERF=1 cargo test --release --test regression -- --ignored --nocapture
