@@ -79,6 +79,8 @@ fn array_interface<T>(data: &[T], typestr: &str) -> ffi::CString {
 /// let dmat = DMatrix::from_csc(indptr, indices, data, None).unwrap();
 /// assert_eq!(dmat.shape(), (3, 3));
 /// ```
+// Not `Send`: XGBoost keeps per-thread entries keyed by the matrix (`DMatrixThreadLocal` in data.cc)
+// and only clears the dropping thread's entry, so dropping on another thread leaks them.
 #[derive(Debug)]
 pub struct DMatrix {
     pub(super) handle: xgboost_sys::DMatrixHandle,
