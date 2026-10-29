@@ -1374,10 +1374,9 @@ mod tests {
     }
 
     #[test]
-    fn booster_and_dmatrix_are_send() {
+    fn booster_is_send() {
         fn assert_send<T: Send>() {}
         assert_send::<Booster>();
-        assert_send::<DMatrix>();
     }
 
     #[test]

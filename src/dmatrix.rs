@@ -86,11 +86,6 @@ pub struct DMatrix {
     num_cols: usize,
 }
 
-// SAFETY: XGBoost copies the input data on construction and keeps the buffers it returns in
-// thread-local maps keyed by the DMatrix pointer (`DMatrixThreadLocal` in data.cc), so the handle
-// has no thread affinity. Not `Sync`: XGBoost does not promise concurrent use of one matrix.
-unsafe impl Send for DMatrix {}
-
 impl DMatrix {
     /// Construct a new instance from a DMatrixHandle created by the XGBoost C API.
     fn new(handle: xgboost_sys::DMatrixHandle) -> XGBResult<Self> {
@@ -287,14 +282,18 @@ impl DMatrix {
     /// Get a new DMatrix as a containing only given indices.
     pub fn slice(&self, indices: &[usize]) -> XGBResult<DMatrix> {
         debug!("Slicing {} rows from DMatrix", indices.len());
-        if let Some(&bad) = indices.iter().find(|&&i| i >= self.num_rows) {
-            return Err(XGBError::new(format!(
-                "slice index {bad} out of bounds for DMatrix with {} rows",
-                self.num_rows
-            )));
-        }
+        let indices: Vec<i32> = indices
+            .iter()
+            .map(|&i| {
+                i32::try_from(i).ok().filter(|_| i < self.num_rows).ok_or_else(|| {
+                    XGBError::new(format!(
+                        "slice index {i} out of bounds for DMatrix with {} rows",
+                        self.num_rows
+                    ))
+                })
+            })
+            .collect::<XGBResult<_>>()?;
         let mut out_handle = ptr::null_mut();
-        let indices: Vec<i32> = indices.iter().map(|x| *x as i32).collect();
         xgb_call!(xgboost_sys::XGDMatrixSliceDMatrix(
             self.handle,
             indices.as_ptr(),
