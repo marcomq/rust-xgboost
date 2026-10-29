@@ -1,30 +1,29 @@
 [package]
 name = "xgboost_lib-sys"
-version = "3.0.5"
-authors = ["Dave Challis <dave@suicas.net>", "Marco Mengelkoch"]
+version = "3.3.0"
+authors = ["Dave Challis <dave@suicas.net>", "Marco Mengelkoch", "Felix Agene <agene001@umn.edu>"]
 links = "xgboost"
 build = "build.rs"
 license = "MIT"
-repository = "https://github.com/marcomq/rust-xgboost"
+repository = "https://github.com/agene0001/rust-xgboost"
 description = "Native bindings to the xgboost library"
 readme = "README.md"
-edition = "2021"
+edition = "2024"
 exclude = [
     "lib/*",
 ]
 
-[dependencies]
-libc = "0.2"
 
 [build-dependencies]
-bindgen = { version = "0.71" }
+bindgen = { version = "0.72.1" }
 dunce =  { version = "1.0.5" }
-ureq = { version = "3", optional = true }
-sha2 = { version = "0.10", optional = true }
-cmake = { version = "0.1", optional = true }
+reqwest = { version = "0.13.4", features = ["blocking"], optional = true }
+sha2 = { version = "0.10.9", optional = true }
+cmake = { version = "0.1.58", optional = true }
 
 [features]
-default = ["use_prebuilt_xgb"]
-use_prebuilt_xgb = ["ureq", "sha2"]
+# Source build by default; see the workspace Cargo.toml for rationale.
+default = ["local_build"]
+use_prebuilt_xgb = ["reqwest", "sha2"]
 local_build = ["cmake"]
 cuda = []

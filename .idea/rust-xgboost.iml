@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module type="EMPTY_MODULE" version="4">
+  <component name="NewModuleRootManager">
+    <content url="file://$MODULE_DIR$">
+      <sourceFolder url="file://$MODULE_DIR$/examples" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/basic/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/custom_objective/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/generalised_linear_model/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/multiclass_classification/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/xgboost-sys/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/benches" isTestSource="true" />
+      <excludeFolder url="file://$MODULE_DIR$/examples/basic/target" />
+      <excludeFolder url="file://$MODULE_DIR$/examples/custom_objective/target" />
+      <excludeFolder url="file://$MODULE_DIR$/examples/generalised_linear_model/target" />
+      <excludeFolder url="file://$MODULE_DIR$/examples/multiclass_classification/target" />
+      <excludeFolder url="file://$MODULE_DIR$/target" />
+      <excludeFolder url="file://$MODULE_DIR$/xgboost-sys/target" />
+    </content>
+    <orderEntry type="inheritedJdk" />
+    <orderEntry type="sourceFolder" forTests="false" />
+  </component>
+</module>

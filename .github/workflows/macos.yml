@@ -16,10 +16,15 @@ jobs:
         submodules: recursive
         
     - name: Install dependencies
-      run: brew install libomp
+      run: brew install libomp ninja
 
     - name: Build
       run: cargo build --verbose
 
     - name: Run tests
       run: cargo test --verbose
+
+    # The download path links the published release assets, whose loader
+    # names (install name / SONAME) only a real run exercises.
+    - name: Run tests (prebuilt libraries)
+      run: cargo test --verbose --no-default-features --features use_prebuilt_xgb
