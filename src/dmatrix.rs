@@ -314,7 +314,11 @@ impl DMatrix {
 
     fn set_str_info(&mut self, field: &str, values: &[&str]) -> XGBResult<()> {
         let field = ffi::CString::new(field).unwrap();
-        let owned: Vec<ffi::CString> = values.iter().map(|s| ffi::CString::new(*s).unwrap()).collect();
+        let owned: Vec<ffi::CString> = values
+            .iter()
+            .map(|s| ffi::CString::new(*s))
+            .collect::<Result<_, _>>()
+            .map_err(|e| XGBError::new(e.to_string()))?;
         let mut ptrs: Vec<*const libc::c_char> = owned.iter().map(|s| s.as_ptr()).collect();
         xgb_call!(xgboost_sys::XGDMatrixSetStrFeatureInfo(
             self.handle,
@@ -553,6 +557,9 @@ mod tests {
         assert_eq!(bst.predict_contributions(&dmat).unwrap().1, (40, 3));
         let first = String::from_utf8(bst.slice(0, 1).unwrap().save_buffer(false).unwrap()).unwrap();
         assert!(first.contains("\"num_trees\":\"1\""), "{first}");
+        assert!(bst.slice(0, 10).is_err());
+        assert!(bst.slice(2, 1).is_err());
+        assert!(dmat.set_feature_names(&["a\0b", "n"]).is_err());
     }
 
     #[test]

@@ -210,7 +210,6 @@ fn train_model(case: Case) -> Booster {
     let (data, labels) = synthetic(case, TRAIN_ROWS, 1);
     let mut dtrain = DMatrix::from_dense(&data, TRAIN_ROWS).unwrap();
     dtrain.set_labels(&labels).unwrap();
-    dtrain.set_feature_names(&FEATURE_NAMES).unwrap();
 
     let tree_params = tree::TreeBoosterParametersBuilder::default()
         .max_depth(6)

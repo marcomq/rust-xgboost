@@ -25,6 +25,8 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     env:
       COMPARE: ${{ github.event_name != 'push' }}
 
@@ -33,6 +35,7 @@ jobs:
         with:
           path: head
           submodules: recursive
+          persist-credentials: false
 
       # Performance is only comparable on the same runner, so the baseline is measured here as well.
       - uses: actions/checkout@v4
@@ -41,6 +44,7 @@ jobs:
           path: baseline
           ref: ${{ github.event.pull_request.base.sha || inputs.baseline }}
           submodules: recursive
+          persist-credentials: false
 
       - name: Install dependencies
         if: runner.os == 'macOS'
