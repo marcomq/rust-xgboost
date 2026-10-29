@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 /// This tracks the libraries, not the crate version: it only moves when the binaries themselves
 /// change, so a crate release that leaves them untouched keeps pointing at the same verified bytes.
 #[cfg(feature = "use_prebuilt_xgb")]
-const LIB_TAG: &str = "v3.0.5";
+const LIB_TAG: &str = "v3.4.0";
 
 /// Base URLs tried in order when an artifact has to be downloaded. `{tag}` is replaced with
 /// [`LIB_TAG`], so the tag is pinned in exactly one place. Each entry is expanded further by
@@ -169,7 +169,7 @@ fn prebuilt_artifacts(platform: &str) -> &'static [Artifact] {
         "mac_arm64" => &[
             Artifact {
                 file: "libxgboost.dylib",
-                sha256: "e438dacf4a1ec44e4f5f1e5005f291f7b66156af7fc49e543b60a5fdc079c024",
+                sha256: "b0eaad2ca2080d6ef99e17d96cd4fe9f63e519e13a90cc4d4ad20435bacdd127",
                 required: true,
             },
             Artifact {
@@ -181,7 +181,7 @@ fn prebuilt_artifacts(platform: &str) -> &'static [Artifact] {
         "linux_amd64" => &[
             Artifact {
                 file: "libxgboost.so",
-                sha256: "9f710fabebce59e1142942b0b95cad4f4088847224684ed52f12aa6f98c5b20b",
+                sha256: "bc3bb6544a25bbc975acdf2f20e83aa3a5197e51b4b9bfe536c1376e1a0ce665",
                 required: true,
             },
             Artifact {
@@ -193,7 +193,7 @@ fn prebuilt_artifacts(platform: &str) -> &'static [Artifact] {
         "linux_arm64" => &[
             Artifact {
                 file: "libxgboost.so",
-                sha256: "03b57ea7ad289c40143fe91637face8af4ff4979c962f2fcfae6227f53443166",
+                sha256: "85f71762ef3ed451e4df2c9de962de135c6d86baf5fc9f2f836879f8df66b344",
                 required: true,
             },
             Artifact {
@@ -205,12 +205,12 @@ fn prebuilt_artifacts(platform: &str) -> &'static [Artifact] {
         "win_amd64" => &[
             Artifact {
                 file: "xgboost.dll",
-                sha256: "831b8fbeb97a879712e315a34ed36b26e9a297ca768317ed930b8a623bd5ccc1",
+                sha256: "92883916c34b11e203072545e67f9d2ba28a1952e03fdb49aec0817341d60665",
                 required: true,
             },
             Artifact {
                 file: "xgboost.lib",
-                sha256: "0ac9f77281d584c0d9f6ec67cbc7ee143fa21f777ca9446945c619c47802a05c",
+                sha256: "d32fbf89c06053d06927fe9f65a5736e27e569cd26e1ffec437a73639fa064a9",
                 required: true,
             },
         ],

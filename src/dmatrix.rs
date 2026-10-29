@@ -243,13 +243,15 @@ impl DMatrix {
     pub fn load_binary<P: AsRef<Path>>(path: P) -> XGBResult<Self> {
         debug!("Loading DMatrix from: {}", path.as_ref().display());
         let mut handle = ptr::null_mut();
-        let path = path
-            .as_ref()
-            .to_str()
-            .ok_or_else(|| XGBError::new("DMatrix path is not valid UTF-8"))?;
-        let path = path.replace('\\', "\\\\").replace('"', "\\\"");
-        let config = ffi::CString::new(format!(r#"{{"uri": "{path}", "silent": 1}}"#))
-            .map_err(|e| XGBError::new(e.to_string()))?;
+        let mut config = br#"{"uri": ""#.to_vec();
+        for &b in path.as_ref().as_os_str().as_encoded_bytes() {
+            if matches!(b, b'\\' | b'"') {
+                config.push(b'\\');
+            }
+            config.push(b);
+        }
+        config.extend_from_slice(br#"", "silent": 1}"#);
+        let config = ffi::CString::new(config).map_err(|e| XGBError::new(e.to_string()))?;
         xgb_call!(xgboost_sys::XGDMatrixCreateFromURI(config.as_ptr(), &mut handle))?;
         DMatrix::new(handle)
     }
