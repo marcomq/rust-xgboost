@@ -1,5 +1,6 @@
 use crate::dmatrix::DMatrix;
 use crate::error::XGBError;
+use std::cell::Cell;
 use std::collections::{BTreeMap, HashMap};
 use std::io::{self, BufRead, BufReader, Write};
 use std::os::raw;
@@ -88,9 +89,43 @@ impl PredictOption {
 /// in a loop.
 pub struct Booster {
     handle: xgboost_sys::BoosterHandle,
+    /// `nthread` as set by the user, "0" meaning all cores.
+    nthread: String,
+    single_threaded: Cell<bool>,
 }
 
+// SAFETY: XGBoost keeps returned buffers in thread-local maps keyed by the learner pointer
+// (`LearnerAPIThreadLocalStore`, learner.cc), so the handle has no thread affinity. Not `Sync`:
+// `&self` calls mutate the learner. Dropping on another thread than the last predict only leaves
+// that thread's output buffer allocated.
+unsafe impl Send for Booster {}
+
 impl Booster {
+    fn from_handle(handle: xgboost_sys::BoosterHandle) -> Self {
+        Booster {
+            handle,
+            nthread: "0".to_owned(),
+            single_threaded: Cell::new(false),
+        }
+    }
+
+    /// XGBoost parallelises prediction over rows, so for a single row extra threads only add
+    /// coordination overhead. Switches to one thread for that case and back to the user's setting
+    /// otherwise; XGBoost is only reconfigured when the mode actually changes.
+    fn use_single_thread(&self, single: bool) -> XGBResult<()> {
+        if single == self.single_threaded.get() {
+            return Ok(());
+        }
+        let value = ffi::CString::new(if single { "1" } else { self.nthread.as_str() }).unwrap();
+        xgb_call!(xgboost_sys::XGBoosterSetParam(
+            self.handle,
+            c"nthread".as_ptr(),
+            value.as_ptr()
+        ))?;
+        self.single_threaded.set(single);
+        Ok(())
+    }
+
     /// Create a new Booster model with given parameters.
     ///
     /// This model can then be trained using calls to update/boost as appropriate.
@@ -114,7 +149,7 @@ impl Booster {
             &mut handle
         ))?;
 
-        let mut booster = Booster { handle };
+        let mut booster = Booster::from_handle(handle);
         booster.set_params(params)?;
         Ok(booster)
     }
@@ -160,7 +195,7 @@ impl Booster {
         let mut handle = ptr::null_mut();
         xgb_call!(xgboost_sys::XGBoosterCreate(ptr::null(), 0, &mut handle))?;
         xgb_call!(xgboost_sys::XGBoosterLoadModel(handle, fname.as_ptr()))?;
-        Ok(Booster { handle })
+        Ok(Booster::from_handle(handle))
     }
 
     /// Load a Booster directly from a buffer.
@@ -174,7 +209,7 @@ impl Booster {
             bytes.as_ptr() as *const _,
             bytes.len() as u64
         ))?;
-        Ok(Booster { handle })
+        Ok(Booster::from_handle(handle))
     }
 
     /// Convenience function for creating/training a new Booster.
@@ -265,7 +300,11 @@ impl Booster {
             return Err(XGBError::new(format!("Boosting rounds {}..{} are out of bound", begin, end)));
         }
         XGBError::check_return_value(ret)?;
-        Ok(Booster { handle })
+        Ok(Booster {
+            handle,
+            nthread: self.nthread.clone(),
+            single_threaded: Cell::new(self.single_threaded.get()),
+        })
     }
 
     /// Update this Booster's parameters.
@@ -284,6 +323,7 @@ impl Booster {
     /// * `dtrain` - matrix to train the model with for a single iteration
     /// * `iteration` - current iteration number
     pub fn update(&mut self, dtrain: &DMatrix, iteration: i32) -> XGBResult<()> {
+        self.use_single_thread(false)?;
         xgb_call!(xgboost_sys::XGBoosterUpdateOneIter(
             self.handle,
             iteration,
@@ -319,6 +359,7 @@ impl Booster {
         // TODO: _validate_feature_names
         let mut grad_vec = gradient.to_vec();
         let mut hess_vec = hessian.to_vec();
+        self.use_single_thread(false)?;
         xgb_call!(xgboost_sys::XGBoosterBoostOneIter(
             self.handle,
             dtrain.handle,
@@ -360,6 +401,7 @@ impl Booster {
         evptrs.shrink_to_fit();
 
         let mut out_result = ptr::null();
+        self.use_single_thread(false)?;
         xgb_call!(xgboost_sys::XGBoosterEvalOneIter(
             self.handle,
             iteration,
@@ -498,6 +540,7 @@ impl Booster {
         let mut out_shape = ptr::null();
         let mut out_shape_dim = 0;
         let mut out_result = ptr::null();
+        self.use_single_thread(dmat.num_rows() == 1)?;
         xgb_call!(xgboost_sys::XGBoosterPredictFromDMatrix(
             self.handle,
             dmat.handle,
@@ -506,13 +549,12 @@ impl Booster {
             &mut out_shape_dim,
             &mut out_result
         ))?;
-        assert!(!out_result.is_null());
-        let shape = unsafe { slice::from_raw_parts(out_shape, out_shape_dim as usize).to_vec() };
+        let shape = copy_output(out_shape, out_shape_dim as usize);
         let mut data_size = 1;
         for dim in &shape {
             data_size *= dim;
         }
-        let data = unsafe { slice::from_raw_parts(out_result, data_size as usize).to_vec() };
+        let data = copy_output(out_result, data_size as usize);
 
         Ok((data, shape))
     }
@@ -526,6 +568,7 @@ impl Booster {
         let ntree_limit = 0;
         let mut out_len = 0;
         let mut out_result = ptr::null();
+        self.use_single_thread(dmat.num_rows() == 1)?;
         xgb_call!(xgboost_sys::XGBoosterPredict(
             self.handle,
             dmat.handle,
@@ -536,8 +579,7 @@ impl Booster {
             &mut out_result
         ))?;
 
-        assert!(!out_result.is_null());
-        let data = unsafe { slice::from_raw_parts(out_result, out_len as usize).to_vec() };
+        let data = copy_output(out_result, out_len as usize);
         Ok(data)
     }
 
@@ -549,17 +591,17 @@ impl Booster {
         let ntree_limit = 0;
         let mut out_len = 0;
         let mut out_result = ptr::null();
+        self.use_single_thread(dmat.num_rows() == 1)?;
         xgb_call!(xgboost_sys::XGBoosterPredict(
             self.handle,
             dmat.handle,
             option_mask,
             ntree_limit,
-            1,
+            0,
             &mut out_len,
             &mut out_result
         ))?;
-        assert!(!out_result.is_null());
-        let data = unsafe { slice::from_raw_parts(out_result, out_len as usize).to_vec() };
+        let data = copy_output(out_result, out_len as usize);
         Ok(data)
     }
 
@@ -573,6 +615,7 @@ impl Booster {
         let ntree_limit = 0;
         let mut out_len = 0;
         let mut out_result = ptr::null();
+        self.use_single_thread(dmat.num_rows() == 1)?;
         xgb_call!(xgboost_sys::XGBoosterPredict(
             self.handle,
             dmat.handle,
@@ -582,11 +625,9 @@ impl Booster {
             &mut out_len,
             &mut out_result
         ))?;
-        assert!(!out_result.is_null());
-
-        let data = unsafe { slice::from_raw_parts(out_result, out_len as usize).to_vec() };
+        let data = copy_output(out_result, out_len as usize);
         let num_rows = dmat.num_rows();
-        let num_cols = data.len() / num_rows;
+        let num_cols = data.len().checked_div(num_rows).unwrap_or(0);
         Ok((data, (num_rows, num_cols)))
     }
 
@@ -602,6 +643,7 @@ impl Booster {
         let ntree_limit = 0;
         let mut out_len = 0;
         let mut out_result = ptr::null();
+        self.use_single_thread(dmat.num_rows() == 1)?;
         xgb_call!(xgboost_sys::XGBoosterPredict(
             self.handle,
             dmat.handle,
@@ -611,11 +653,9 @@ impl Booster {
             &mut out_len,
             &mut out_result
         ))?;
-        assert!(!out_result.is_null());
-
-        let data = unsafe { slice::from_raw_parts(out_result, out_len as usize).to_vec() };
+        let data = copy_output(out_result, out_len as usize);
         let num_rows = dmat.num_rows();
-        let num_cols = data.len() / num_rows;
+        let num_cols = data.len().checked_div(num_rows).unwrap_or(0);
         Ok((data, (num_rows, num_cols)))
     }
 
@@ -632,6 +672,7 @@ impl Booster {
         let ntree_limit = 0;
         let mut out_len = 0;
         let mut out_result = ptr::null();
+        self.use_single_thread(dmat.num_rows() == 1)?;
         xgb_call!(xgboost_sys::XGBoosterPredict(
             self.handle,
             dmat.handle,
@@ -641,12 +682,10 @@ impl Booster {
             &mut out_len,
             &mut out_result
         ))?;
-        assert!(!out_result.is_null());
-
-        let data = unsafe { slice::from_raw_parts(out_result, out_len as usize).to_vec() };
+        let data = copy_output(out_result, out_len as usize);
         let num_rows = dmat.num_rows();
 
-        let dim = ((data.len() / num_rows) as f64).sqrt() as usize;
+        let dim = (data.len().checked_div(num_rows).unwrap_or(0) as f64).sqrt() as usize;
         Ok((data, (num_rows, dim, dim)))
     }
 
@@ -718,13 +757,18 @@ impl Booster {
     }
 
     pub fn set_param(&mut self, name: &str, value: &str) -> XGBResult<()> {
-        let name = ffi::CString::new(name).unwrap();
-        let value = ffi::CString::new(value).unwrap();
+        let c_name = ffi::CString::new(name).unwrap();
+        let c_value = ffi::CString::new(value).unwrap();
         xgb_call!(xgboost_sys::XGBoosterSetParam(
             self.handle,
-            name.as_ptr(),
-            value.as_ptr()
-        ))
+            c_name.as_ptr(),
+            c_value.as_ptr()
+        ))?;
+        if name == "nthread" {
+            self.nthread = value.to_owned();
+            self.single_threaded.set(false);
+        }
+        Ok(())
     }
 
     fn parse_eval_string(eval: &str, evnames: &[&str]) -> IndexMap<String, IndexMap<String, f32>> {
@@ -733,8 +777,8 @@ impl Booster {
         debug!("Parsing evaluation line: {}", &eval);
         for part in eval.split('\t').skip(1) {
             for evname in evnames {
-                if part.starts_with(evname) {
-                    let metric_parts: Vec<&str> = part[evname.len() + 1..].split(':').collect();
+                if let Some(metric_score) = part.strip_prefix(evname).and_then(|rest| rest.strip_prefix('-')) {
+                    let metric_parts: Vec<&str> = metric_score.split(':').collect();
                     assert_eq!(metric_parts.len(), 2);
                     let metric = metric_parts[0];
                     let score = metric_parts[1]
@@ -749,6 +793,15 @@ impl Booster {
 
         debug!("result: {:?}", &result);
         result
+    }
+}
+
+/// Copies an XGBoost output buffer, which XGBoost may leave null when it is empty (e.g. for 0 rows).
+fn copy_output<T: Copy>(data: *const T, len: usize) -> Vec<T> {
+    if len == 0 {
+        Vec::new()
+    } else {
+        unsafe { slice::from_raw_parts(data, len).to_vec() }
     }
 }
 
@@ -1286,6 +1339,51 @@ mod tests {
     }
 
     #[test]
+    fn parse_eval_string_keeps_prefixed_names_apart() {
+        let s = "[0]\tval-logloss:1.0\tval2-logloss:2.0";
+        let metrics = Booster::parse_eval_string(s, &["val", "val2"]);
+        assert_eq!(metrics["val"]["logloss"], 1.0);
+        assert_eq!(metrics["val2"]["logloss"], 2.0);
+        assert_eq!(metrics["val"].len(), 1);
+    }
+
+    #[test]
+    fn predict_on_empty_matrix_returns_empty() {
+        let dmat = read_train_matrix().unwrap();
+        let mut booster = Booster::new_with_cached_dmats(&BoosterParameters::default(), &[&dmat]).unwrap();
+        booster.update(&dmat, 0).unwrap();
+        let empty = dmat.slice(&[]).unwrap();
+        assert_eq!(empty.num_rows(), 0);
+
+        assert!(booster.predict(&empty).unwrap().is_empty());
+        assert!(booster.predict_margin(&empty).unwrap().is_empty());
+        assert_eq!(booster.predict_leaf(&empty).unwrap().1, (0, 0));
+        assert_eq!(booster.predict_contributions(&empty).unwrap().1, (0, 0));
+        assert_eq!(booster.predict_interactions(&empty).unwrap().1, (0, 0, 0));
+    }
+
+    #[test]
+    fn predict_margin_is_deterministic_for_dart() {
+        let dmat = read_train_matrix().unwrap();
+        let mut booster = Booster::new_with_cached_dmats(&BoosterParameters::default(), &[&dmat]).unwrap();
+        booster.set_param("booster", "dart").unwrap();
+        booster.set_param("rate_drop", "0.5").unwrap();
+        for i in 0..5 {
+            booster.update(&dmat, i).unwrap();
+        }
+        assert_eq!(
+            booster.predict_margin(&dmat).unwrap(),
+            booster.predict_margin(&dmat).unwrap()
+        );
+    }
+
+    #[test]
+    fn booster_is_send() {
+        fn assert_send<T: Send>() {}
+        assert_send::<Booster>();
+    }
+
+    #[test]
     fn dump_model() {
         let dmat_train =
             DMatrix::load(r#"{"uri": "xgboost-sys/xgboost/demo/data/agaricus.txt.train?format=libsvm"}"#).unwrap();
@@ -1316,8 +1414,8 @@ mod tests {
             .unwrap();
         let booster = Booster::train(&training_params).unwrap();
 
-        assert_eq!(
-            booster.dump_model(true, None).unwrap(),
+        assert_dump_approx_eq(
+            &booster.dump_model(true, None).unwrap(),
             "0:[f29<2.00001001] yes=1,no=2,missing=2,gain=4000.53101,cover=1628.25
 	1:[f109<2.00001001] yes=3,no=4,missing=4,gain=198.173828,cover=703.75
 		3:leaf=1.85964918,cover=13.25
@@ -1326,7 +1424,7 @@ mod tests {
 		5:leaf=-1.70044053,cover=112.5
 		6:leaf=1.71217716,cover=812
 
-0:[f60<2.00001001] yes=1,no=2,missing=2,gain=832.544983,cover=788.852051
+0:[f60<2.00001001] yes=1,no=2,missing=2,gain=832.545044,cover=788.852051
 	1:leaf=-6.23624468,cover=20.462389
 	2:[f29<2.00001001] yes=3,no=4,missing=4,gain=569.725098,cover=768.389709
 		3:leaf=-0.968530357,cover=309.45282
@@ -1336,24 +1434,24 @@ mod tests {
 	1:[f111<2.00001001] yes=3,no=4,missing=4,gain=258.184326,cover=236.018005
 		3:leaf=-9.421422,cover=2.53038669
 		4:leaf=-0.791407049,cover=233.487625
-	2:[f67<2.00001001] yes=5,no=6,missing=6,gain=226.336975,cover=221.051468
+	2:[f67<2.00001001] yes=5,no=6,missing=6,gain=226.33696,cover=221.051468
 		5:leaf=5.77228642,cover=8.05200672
 		6:leaf=0.658725023,cover=212.999451
 
-0:[f27<2.00001001] yes=1,no=2,missing=2,gain=140.486053,cover=364.119354
+0:[f27<2.00001001] yes=1,no=2,missing=2,gain=140.486069,cover=364.119354
 	1:leaf=1.07747853,cover=90.0174103
-	2:[f39<2.00001001] yes=3,no=4,missing=4,gain=139.860519,cover=274.101959
+	2:[f39<2.00001001] yes=3,no=4,missing=4,gain=139.860504,cover=274.101959
 		3:leaf=-0.877905607,cover=178.241974
 		4:leaf=0.614153326,cover=95.8599854
 
-0:[f109<2.00001001] yes=1,no=2,missing=2,gain=112.605019,cover=189.202194
+0:[f109<2.00001001] yes=1,no=2,missing=2,gain=112.605011,cover=189.202194
 	1:leaf=2.92190909,cover=11.4303684
 	2:[f36<2.00001001] yes=3,no=4,missing=4,gain=66.4029999,cover=177.771835
 		3:leaf=0.152607277,cover=135.494431
 		4:leaf=-1.26934469,cover=42.277401
 
-0:[f23<2.00001001] yes=1,no=2,missing=2,gain=52.5610313,cover=170.612762
-	1:[f36<2.00001001] yes=3,no=4,missing=4,gain=12.4420547,cover=19.731596
+0:[f23<2.00001001] yes=1,no=2,missing=2,gain=52.5610275,cover=170.612762
+	1:[f36<2.00001001] yes=3,no=4,missing=4,gain=12.4420624,cover=19.731596
 		3:leaf=-1.02315068,cover=16.0739021
 		4:leaf=-3.02413678,cover=3.65769386
 	2:[f24<2.00001001] yes=5,no=6,missing=6,gain=67.3869553,cover=150.881165
@@ -1361,22 +1459,22 @@ mod tests {
 		6:leaf=0.431742132,cover=131.902222
 
 0:[f29<2.00001001] yes=1,no=2,missing=2,gain=66.2389145,cover=142.360611
-	1:[f109<2.00001001] yes=3,no=4,missing=4,gain=12.1987419,cover=69.6048737
+	1:[f109<2.00001001] yes=3,no=4,missing=4,gain=12.1987381,cover=69.6048737
 		3:leaf=0.836115122,cover=3.48375821
 		4:leaf=-0.912605286,cover=66.1211166
-	2:[f24<2.00001001] yes=5,no=6,missing=6,gain=31.229435,cover=72.7557373
+	2:[f24<2.00001001] yes=5,no=6,missing=6,gain=31.2294331,cover=72.7557373
 		5:leaf=-1.19710124,cover=8.22473907
 		6:leaf=0.777142286,cover=64.5309982
 
 0:[f39<2.00001001] yes=1,no=2,missing=2,gain=20.6531773,cover=79.4027634
-	1:[f27<2.00001001] yes=3,no=4,missing=4,gain=22.1144371,cover=44.4738464
+	1:[f27<2.00001001] yes=3,no=4,missing=4,gain=22.1144333,cover=44.4738464
 		3:leaf=0.890622675,cover=7.49097395
 		4:leaf=-0.908311546,cover=36.982872
 	2:[f112<2.00001001] yes=5,no=6,missing=6,gain=16.0703697,cover=34.9289207
 		5:leaf=1.4361918,cover=9.89693928
 		6:leaf=-0.0180106498,cover=25.0319824
 
-0:[f23<2.00001001] yes=1,no=2,missing=2,gain=11.7128553,cover=53.3251991
+0:[f23<2.00001001] yes=1,no=2,missing=2,gain=11.7128544,cover=53.3251991
 	1:leaf=-1.01502442,cover=9.02525806
 	2:[f102<2.00001001] yes=3,no=4,missing=4,gain=12.5461531,cover=44.299942
 		3:leaf=0.56883812,cover=28.5100231
@@ -1386,10 +1484,26 @@ mod tests {
 	1:[f61<2.00001001] yes=3,no=4,missing=4,gain=19.3462334,cover=2.87474418
 		3:leaf=-0.609474957,cover=1.53319895
 		4:leaf=3.63442755,cover=1.34154534
-	2:[f29<2.00001001] yes=5,no=6,missing=6,gain=10.1308861,cover=43.0564575
+	2:[f29<2.00001001] yes=5,no=6,missing=6,gain=10.1308851,cover=43.0564575
 		5:leaf=-0.734555721,cover=20.7280827
 		6:leaf=0.217203051,cover=22.3283749
-"
+",
         );
+    }
+
+    /// Compares tree dumps field by field; numbers may differ in the last float digits between
+    /// XGBoost versions (e.g. the prebuilt library vs. a `local_build` of the submodule).
+    fn assert_dump_approx_eq(actual: &str, expected: &str) {
+        let fields = |s: &str| s.split(['=', ',', '\n']).map(str::to_owned).collect::<Vec<_>>();
+        let (actual, expected) = (fields(actual), fields(expected));
+        assert_eq!(actual.len(), expected.len(), "dump structure differs");
+        for (a, e) in actual.iter().zip(&expected) {
+            match (a.parse::<f64>(), e.parse::<f64>()) {
+                (Ok(a_num), Ok(e_num)) => {
+                    assert!((a_num - e_num).abs() <= 1e-5 * e_num.abs().max(1.0), "{a} != {e}")
+                }
+                _ => assert_eq!(a, e),
+            }
+        }
     }
 }

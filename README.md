@@ -18,7 +18,7 @@ Creates a shared library and uses Ninja instead of makefiles as generator.
 - **This crate does not follow semver.** The first two version numbers always match the
   XGBoost library version it is built against (e.g. `3.0.x` uses XGBoost 3.0). The last
   number is this crate's own release counter, and any release may contain breaking API
-  changes. Pin an exact version (e.g. `xgb = "=3.0.7"`) if you need stability.
+  changes. Pin an exact version (e.g. `xgb = "=3.4.0"`) if you need stability.
 
 ## Requirements
 
@@ -104,12 +104,12 @@ more detailed examples of different features.
 
 ## Status
 
-The version number is just an indicator that xboost 3.0.0 is used.
+The version number is just an indicator that xgboost 3.4 is used.
 
 This is still a very early stage of development, so the API is changing as usability issues occur,
 or new features are supported. This is still expected to be compatible to an earlier rust-xgboost library.
 
-Builds against XGBoost 3.0.0.
+Builds against XGBoost 3.4.1.
 
 ## Use prebuilt xgboost library or build it
 

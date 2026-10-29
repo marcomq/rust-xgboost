@@ -1,6 +1,6 @@
 [package]
 name = "xgboost_lib-sys"
-version = "3.0.6"
+version = "3.4.0"
 authors = ["Dave Challis <dave@suicas.net>", "Marco Mengelkoch"]
 links = "xgboost"
 build = "build.rs"
@@ -12,6 +12,10 @@ edition = "2021"
 exclude = [
     "lib/*",
 ]
+
+[lib]
+# The bindings carry XGBoost's C doc comments, whose indented blocks are not Rust examples.
+doctest = false
 
 [dependencies]
 libc = "0.2"

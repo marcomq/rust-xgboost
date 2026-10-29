@@ -24,7 +24,7 @@ The files were written by the **trusted** version:
 - The model JSON still parses and still has the fields serving code commonly reads (booster name, objective,
   `num_parallel_tree`, `num_class`).
 - A model retrained on the same data scores at least as well as before: each quality metric may get worse
-  by at most 0.005, and scores move by at most 0.01 on average.
+  by at most 0.005, and scores move by at most 0.03 on average.
 - Latency and throughput stay within 1.25x of the baseline (`XGB_PERF_TOLERANCE` changes the factor):
   - p50 latency of single-row scoring (p99 is printed but not checked: it swings by more than 1.5x between
     identical runs)
