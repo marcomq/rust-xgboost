@@ -1,11 +1,11 @@
 use crate::dmatrix::DMatrix;
 use crate::error::XGBError;
+use std::cell::Cell;
 use std::collections::{BTreeMap, HashMap};
 use std::io::{self, BufRead, BufReader, Write};
 use std::os::raw;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use std::cell::Cell;
 use std::{ffi, fmt, fs::File, ptr, slice};
 
 use indexmap::IndexMap;
@@ -93,6 +93,12 @@ pub struct Booster {
     nthread: String,
     single_threaded: Cell<bool>,
 }
+
+// SAFETY: XGBoost keeps returned buffers in thread-local maps keyed by the learner pointer
+// (`LearnerAPIThreadLocalStore`, learner.cc), so the handle has no thread affinity. Not `Sync`:
+// `&self` calls mutate the learner. Dropping on another thread than the last predict only leaves
+// that thread's output buffer allocated.
+unsafe impl Send for Booster {}
 
 impl Booster {
     fn from_handle(handle: xgboost_sys::BoosterHandle) -> Self {
@@ -539,13 +545,12 @@ impl Booster {
             &mut out_shape_dim,
             &mut out_result
         ))?;
-        assert!(!out_result.is_null());
-        let shape = unsafe { slice::from_raw_parts(out_shape, out_shape_dim as usize).to_vec() };
+        let shape = copy_output(out_shape, out_shape_dim as usize);
         let mut data_size = 1;
         for dim in &shape {
             data_size *= dim;
         }
-        let data = unsafe { slice::from_raw_parts(out_result, data_size as usize).to_vec() };
+        let data = copy_output(out_result, data_size as usize);
 
         Ok((data, shape))
     }
@@ -570,8 +575,7 @@ impl Booster {
             &mut out_result
         ))?;
 
-        assert!(!out_result.is_null());
-        let data = unsafe { slice::from_raw_parts(out_result, out_len as usize).to_vec() };
+        let data = copy_output(out_result, out_len as usize);
         Ok(data)
     }
 
@@ -589,12 +593,11 @@ impl Booster {
             dmat.handle,
             option_mask,
             ntree_limit,
-            1,
+            0,
             &mut out_len,
             &mut out_result
         ))?;
-        assert!(!out_result.is_null());
-        let data = unsafe { slice::from_raw_parts(out_result, out_len as usize).to_vec() };
+        let data = copy_output(out_result, out_len as usize);
         Ok(data)
     }
 
@@ -618,11 +621,9 @@ impl Booster {
             &mut out_len,
             &mut out_result
         ))?;
-        assert!(!out_result.is_null());
-
-        let data = unsafe { slice::from_raw_parts(out_result, out_len as usize).to_vec() };
+        let data = copy_output(out_result, out_len as usize);
         let num_rows = dmat.num_rows();
-        let num_cols = data.len() / num_rows;
+        let num_cols = data.len().checked_div(num_rows).unwrap_or(0);
         Ok((data, (num_rows, num_cols)))
     }
 
@@ -648,11 +649,9 @@ impl Booster {
             &mut out_len,
             &mut out_result
         ))?;
-        assert!(!out_result.is_null());
-
-        let data = unsafe { slice::from_raw_parts(out_result, out_len as usize).to_vec() };
+        let data = copy_output(out_result, out_len as usize);
         let num_rows = dmat.num_rows();
-        let num_cols = data.len() / num_rows;
+        let num_cols = data.len().checked_div(num_rows).unwrap_or(0);
         Ok((data, (num_rows, num_cols)))
     }
 
@@ -679,12 +678,10 @@ impl Booster {
             &mut out_len,
             &mut out_result
         ))?;
-        assert!(!out_result.is_null());
-
-        let data = unsafe { slice::from_raw_parts(out_result, out_len as usize).to_vec() };
+        let data = copy_output(out_result, out_len as usize);
         let num_rows = dmat.num_rows();
 
-        let dim = ((data.len() / num_rows) as f64).sqrt() as usize;
+        let dim = (data.len().checked_div(num_rows).unwrap_or(0) as f64).sqrt() as usize;
         Ok((data, (num_rows, dim, dim)))
     }
 
@@ -776,8 +773,8 @@ impl Booster {
         debug!("Parsing evaluation line: {}", &eval);
         for part in eval.split('\t').skip(1) {
             for evname in evnames {
-                if part.starts_with(evname) {
-                    let metric_parts: Vec<&str> = part[evname.len() + 1..].split(':').collect();
+                if let Some(metric_score) = part.strip_prefix(evname).and_then(|rest| rest.strip_prefix('-')) {
+                    let metric_parts: Vec<&str> = metric_score.split(':').collect();
                     assert_eq!(metric_parts.len(), 2);
                     let metric = metric_parts[0];
                     let score = metric_parts[1]
@@ -792,6 +789,15 @@ impl Booster {
 
         debug!("result: {:?}", &result);
         result
+    }
+}
+
+/// Copies an XGBoost output buffer, which XGBoost may leave null when it is empty (e.g. for 0 rows).
+fn copy_output<T: Copy>(data: *const T, len: usize) -> Vec<T> {
+    if len == 0 {
+        Vec::new()
+    } else {
+        unsafe { slice::from_raw_parts(data, len).to_vec() }
     }
 }
 
@@ -1326,6 +1332,52 @@ mod tests {
         metrics.insert("train".to_owned(), train_metrics);
         metrics.insert("test".to_owned(), test_metrics);
         assert_eq!(Booster::parse_eval_string(s, &["train", "test"]), metrics);
+    }
+
+    #[test]
+    fn parse_eval_string_keeps_prefixed_names_apart() {
+        let s = "[0]\tval-logloss:1.0\tval2-logloss:2.0";
+        let metrics = Booster::parse_eval_string(s, &["val", "val2"]);
+        assert_eq!(metrics["val"]["logloss"], 1.0);
+        assert_eq!(metrics["val2"]["logloss"], 2.0);
+        assert_eq!(metrics["val"].len(), 1);
+    }
+
+    #[test]
+    fn predict_on_empty_matrix_returns_empty() {
+        let dmat = read_train_matrix().unwrap();
+        let mut booster = Booster::new_with_cached_dmats(&BoosterParameters::default(), &[&dmat]).unwrap();
+        booster.update(&dmat, 0).unwrap();
+        let empty = dmat.slice(&[]).unwrap();
+        assert_eq!(empty.num_rows(), 0);
+
+        assert!(booster.predict(&empty).unwrap().is_empty());
+        assert!(booster.predict_margin(&empty).unwrap().is_empty());
+        assert_eq!(booster.predict_leaf(&empty).unwrap().1, (0, 0));
+        assert_eq!(booster.predict_contributions(&empty).unwrap().1, (0, 0));
+        assert_eq!(booster.predict_interactions(&empty).unwrap().1, (0, 0, 0));
+    }
+
+    #[test]
+    fn predict_margin_is_deterministic_for_dart() {
+        let dmat = read_train_matrix().unwrap();
+        let mut booster = Booster::new_with_cached_dmats(&BoosterParameters::default(), &[&dmat]).unwrap();
+        booster.set_param("booster", "dart").unwrap();
+        booster.set_param("rate_drop", "0.5").unwrap();
+        for i in 0..5 {
+            booster.update(&dmat, i).unwrap();
+        }
+        assert_eq!(
+            booster.predict_margin(&dmat).unwrap(),
+            booster.predict_margin(&dmat).unwrap()
+        );
+    }
+
+    #[test]
+    fn booster_and_dmatrix_are_send() {
+        fn assert_send<T: Send>() {}
+        assert_send::<Booster>();
+        assert_send::<DMatrix>();
     }
 
     #[test]

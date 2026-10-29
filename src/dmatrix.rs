@@ -86,6 +86,11 @@ pub struct DMatrix {
     num_cols: usize,
 }
 
+// SAFETY: XGBoost copies the input data on construction and keeps the buffers it returns in
+// thread-local maps keyed by the DMatrix pointer (`DMatrixThreadLocal` in data.cc), so the handle
+// has no thread affinity. Not `Sync`: XGBoost does not promise concurrent use of one matrix.
+unsafe impl Send for DMatrix {}
+
 impl DMatrix {
     /// Construct a new instance from a DMatrixHandle created by the XGBoost C API.
     fn new(handle: xgboost_sys::DMatrixHandle) -> XGBResult<Self> {
@@ -124,12 +129,27 @@ impl DMatrix {
     /// let dmat = DMatrix::from_dense(data, num_rows).unwrap();
     /// ```
     pub fn from_dense(data: &[f32], num_rows: usize) -> XGBResult<Self> {
+        Self::from_dense_with_missing(data, num_rows, f32::NAN)
+    }
+
+    /// Like [`from_dense`](Self::from_dense), but treats every value equal to `missing` as a missing
+    /// value instead of `NaN`. `NaN` values are always treated as missing.
+    ///
+    /// Returns an error if `num_rows` is 0 or `data.len()` is not a multiple of `num_rows`.
+    pub fn from_dense_with_missing(data: &[f32], num_rows: usize, missing: f32) -> XGBResult<Self> {
+        if num_rows == 0 || !data.len().is_multiple_of(num_rows) {
+            return Err(XGBError::new(format!(
+                "dense data of length {} cannot be split into {} rows",
+                data.len(),
+                num_rows
+            )));
+        }
         let mut handle = ptr::null_mut();
         xgb_call!(xgboost_sys::XGDMatrixCreateFromMat(
             data.as_ptr(),
             num_rows as xgboost_sys::bst_ulong,
             (data.len() / num_rows) as xgboost_sys::bst_ulong,
-            f32::NAN,
+            missing,
             &mut handle
         ))?;
         DMatrix::new(handle)
@@ -148,7 +168,10 @@ impl DMatrix {
         let mut handle = ptr::null_mut();
         let num_cols = num_cols.unwrap_or(0); // infer from data if 0
         let config = ffi::CString::new(SPARSE_CONFIG).unwrap();
-        let (indptr, indices) = (array_interface(indptr, USIZE_TYPESTR), array_interface(indices, USIZE_TYPESTR));
+        let (indptr, indices) = (
+            array_interface(indptr, USIZE_TYPESTR),
+            array_interface(indices, USIZE_TYPESTR),
+        );
         let data = array_interface(data, "<f4");
         xgb_call!(xgboost_sys::XGDMatrixCreateFromCSR(
             indptr.as_ptr(),
@@ -174,7 +197,10 @@ impl DMatrix {
         let mut handle = ptr::null_mut();
         let num_rows = num_rows.unwrap_or(0); // infer from data if 0
         let config = ffi::CString::new(SPARSE_CONFIG).unwrap();
-        let (indptr, indices) = (array_interface(indptr, USIZE_TYPESTR), array_interface(indices, USIZE_TYPESTR));
+        let (indptr, indices) = (
+            array_interface(indptr, USIZE_TYPESTR),
+            array_interface(indices, USIZE_TYPESTR),
+        );
         let data = array_interface(data, "<f4");
         xgb_call!(xgboost_sys::XGDMatrixCreateFromCSC(
             indptr.as_ptr(),
@@ -261,6 +287,12 @@ impl DMatrix {
     /// Get a new DMatrix as a containing only given indices.
     pub fn slice(&self, indices: &[usize]) -> XGBResult<DMatrix> {
         debug!("Slicing {} rows from DMatrix", indices.len());
+        if let Some(&bad) = indices.iter().find(|&&i| i >= self.num_rows) {
+            return Err(XGBError::new(format!(
+                "slice index {bad} out of bounds for DMatrix with {} rows",
+                self.num_rows
+            )));
+        }
         let mut out_handle = ptr::null_mut();
         let indices: Vec<i32> = indices.iter().map(|x| *x as i32).collect();
         xgb_call!(xgboost_sys::XGDMatrixSliceDMatrix(
@@ -617,8 +649,8 @@ mod tests {
         assert_eq!(dmat.slice(&[1]).unwrap().shape(), (1, 2));
         assert_eq!(dmat.slice(&[0, 1]).unwrap().shape(), (2, 2));
         assert_eq!(dmat.slice(&[3, 2, 1]).unwrap().shape(), (3, 2));
-        // slicing out of bounds is not safe and can cause a segfault
-        // assert_eq!(dmat.slice(&[10, 11, 12]).unwrap().shape(), (3, 2));
+        assert!(dmat.slice(&[10, 11, 12]).is_err());
+        assert!(dmat.slice(&[4]).is_err());
     }
 
     #[test]
@@ -634,5 +666,27 @@ mod tests {
         assert_eq!(dmat.slice(&[1, 0]).unwrap().shape(), (2, 3));
         assert_eq!(dmat.slice(&[0, 1, 2]).unwrap().shape(), (3, 3));
         assert_eq!(dmat.slice(&[3, 2, 1]).unwrap().shape(), (3, 3));
+    }
+
+    #[test]
+    fn from_dense_rejects_invalid_row_count() {
+        let data = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        assert!(DMatrix::from_dense(&data, 0).is_err());
+        assert!(DMatrix::from_dense(&data, 4).is_err());
+        assert_eq!(DMatrix::from_dense(&data, 3).unwrap().shape(), (3, 2));
+    }
+
+    #[test]
+    fn from_dense_with_missing_drops_sentinel() {
+        let data = [1.0, -999.0, -999.0, 4.0, 5.0, 6.0];
+        let non_missing = |dmat: &DMatrix| {
+            let mut out = 0;
+            xgb_call!(xgboost_sys::XGDMatrixNumNonMissing(dmat.handle, &mut out)).unwrap();
+            out
+        };
+        let with_sentinel = DMatrix::from_dense_with_missing(&data, 3, -999.0).unwrap();
+        assert_eq!(with_sentinel.shape(), (3, 2));
+        assert_eq!(non_missing(&with_sentinel), 4);
+        assert_eq!(non_missing(&DMatrix::from_dense(&data, 3).unwrap()), 6);
     }
 }
