@@ -300,6 +300,54 @@ impl DMatrix {
         self.get_uint_info(KEY_GROUP_PTR)
     }
 
+    /// Set the type of each feature: "q" (quantitative), "int", "float" or "c" (categorical).
+    ///
+    /// Categorical columns hold the category codes as values; training needs `tree_method` "hist" or "approx".
+    pub fn set_feature_types(&mut self, types: &[&str]) -> XGBResult<()> {
+        self.set_str_info("feature_type", types)
+    }
+
+    /// Set the name of each feature.
+    pub fn set_feature_names(&mut self, names: &[&str]) -> XGBResult<()> {
+        self.set_str_info("feature_name", names)
+    }
+
+    fn set_str_info(&mut self, field: &str, values: &[&str]) -> XGBResult<()> {
+        let field = ffi::CString::new(field).unwrap();
+        let owned: Vec<ffi::CString> = values
+            .iter()
+            .map(|s| ffi::CString::new(*s))
+            .collect::<Result<_, _>>()
+            .map_err(|e| XGBError::new(e.to_string()))?;
+        let mut ptrs: Vec<*const libc::c_char> = owned.iter().map(|s| s.as_ptr()).collect();
+        xgb_call!(xgboost_sys::XGDMatrixSetStrFeatureInfo(
+            self.handle,
+            field.as_ptr(),
+            ptrs.as_mut_ptr(),
+            values.len() as u64
+        ))
+    }
+
+    pub(crate) fn get_str_info(&self, field: &str) -> XGBResult<Vec<String>> {
+        let field = ffi::CString::new(field).unwrap();
+        let mut out_len = 0;
+        let mut out = ptr::null_mut();
+        xgb_call!(xgboost_sys::XGDMatrixGetStrFeatureInfo(
+            self.handle,
+            field.as_ptr(),
+            &mut out_len,
+            &mut out
+        ))?;
+        if out_len == 0 {
+            return Ok(Vec::new());
+        }
+        let ptrs = unsafe { slice::from_raw_parts(out, out_len as usize) };
+        Ok(ptrs
+            .iter()
+            .map(|p| unsafe { ffi::CStr::from_ptr(*p).to_string_lossy().into_owned() })
+            .collect())
+    }
+
     fn get_float_info(&self, field: &str) -> XGBResult<&[f32]> {
         let field = ffi::CString::new(field).unwrap();
         let mut out_len = 0;
@@ -491,6 +539,47 @@ mod tests {
         let dmat = DMatrix::from_dense(&data, num_rows).unwrap();
         assert_eq!(dmat.num_rows(), 3);
         assert_eq!(dmat.num_cols(), 1);
+    }
+
+    #[test]
+    fn categorical_feature_types_train_a_categorical_split() {
+        use crate::{parameters, Booster};
+        let data: Vec<f32> = (0..40).flat_map(|i| [(i % 4) as f32, i as f32]).collect();
+        let labels: Vec<f32> = (0..40).map(|i| if i % 4 == 2 { 1.0 } else { 0.0 }).collect();
+        let mut dmat = DMatrix::from_dense(&data, 40).unwrap();
+        dmat.set_labels(&labels).unwrap();
+        dmat.set_feature_names(&["colour", "n"]).unwrap();
+        dmat.set_feature_types(&["c", "q"]).unwrap();
+
+        let tree = parameters::tree::TreeBoosterParametersBuilder::default()
+            .tree_method(parameters::tree::TreeMethod::Hist)
+            .max_depth(1)
+            .build()
+            .unwrap();
+        let learning = parameters::learning::LearningTaskParametersBuilder::default()
+            .objective(parameters::learning::Objective::BinaryLogistic)
+            .build()
+            .unwrap();
+        let booster_params = parameters::BoosterParametersBuilder::default()
+            .booster_type(parameters::BoosterType::Tree(tree))
+            .learning_params(learning)
+            .build()
+            .unwrap();
+        let params = parameters::TrainingParametersBuilder::default()
+            .dtrain(&dmat)
+            .boost_rounds(2)
+            .booster_params(booster_params)
+            .build()
+            .unwrap();
+        let bst = Booster::train(&params).unwrap();
+        let json = String::from_utf8(bst.save_buffer(false).unwrap()).unwrap();
+        assert!(json.contains("\"categories_nodes\":[0]"), "{json}");
+        assert_eq!(bst.predict_contributions(&dmat).unwrap().1, (40, 3));
+        let first = String::from_utf8(bst.slice(0, 1).unwrap().save_buffer(false).unwrap()).unwrap();
+        assert!(first.contains("\"num_trees\":\"1\""), "{first}");
+        assert!(bst.slice(0, 10).is_err());
+        assert!(bst.slice(2, 1).is_err());
+        assert!(dmat.set_feature_names(&["a\0b", "n"]).is_err());
     }
 
     #[test]

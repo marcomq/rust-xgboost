@@ -198,6 +198,12 @@ impl Booster {
         };
 
         let mut bst = Booster::new_with_cached_dmats(&params.booster_params, &cached_dmats)?;
+        for field in ["feature_name", "feature_type"] {
+            let values = params.dtrain.get_str_info(field)?;
+            if !values.is_empty() {
+                bst.set_feature_info(field, &values.iter().map(String::as_str).collect())?;
+            }
+        }
         for i in 0..params.boost_rounds as i32 {
             debug!("Updating in round: {}", i);
             if let Some(objective_fn) = params.custom_objective_fn {
@@ -241,6 +247,21 @@ impl Booster {
         }
 
         Ok(bst)
+    }
+
+    /// A new Booster holding the boosting rounds `begin..end` of this one, e.g. `0..best + 1` after early stopping.
+    pub fn slice(&self, begin: i32, end: i32) -> XGBResult<Booster> {
+        // XGBoost reads end == 0 as "up to the last round"
+        if end == 0 {
+            return Err(XGBError::new(format!("Boosting rounds {}..{} are empty", begin, end)));
+        }
+        let mut handle = ptr::null_mut();
+        let ret = unsafe { xgboost_sys::XGBoosterSlice(self.handle, begin, end, 1, &mut handle) };
+        if ret == -2 {
+            return Err(XGBError::new(format!("Boosting rounds {}..{} are out of bound", begin, end)));
+        }
+        XGBError::check_return_value(ret)?;
+        Ok(Booster { handle })
     }
 
     /// Update this Booster's parameters.
@@ -448,10 +469,7 @@ impl Booster {
 
         // We want zero terminated strings
         let c_temp_features: Vec<ffi::CString> = features.iter().map(|s| ffi::CString::new(*s).unwrap()).collect();
-        let mut c_feature_ptr: Vec<*const raw::c_char> = c_temp_features
-            .into_iter()
-            .map(|s| s.into_raw() as *const raw::c_char)
-            .collect();
+        let mut c_feature_ptr: Vec<*const raw::c_char> = c_temp_features.iter().map(|s| s.as_ptr()).collect();
 
         xgb_call!(xgboost_sys::XGBoosterSetStrFeatureInfo(
             self.handle,
@@ -935,6 +953,28 @@ mod tests {
         let mut attrs = booster.get_feature_names().expect("Getting features failed");
         attrs.sort();
         assert_eq!(attrs, expected);
+    }
+
+    #[test]
+    fn slice_rejects_empty_end() {
+        let booster = load_test_booster();
+        assert!(booster.slice(0, 0).is_err());
+    }
+
+    #[test]
+    fn train_keeps_feature_names_and_types() {
+        let mut dtrain = DMatrix::from_dense(&[0.0, 1.0, 1.0, 0.0, 2.0, 1.0, 3.0, 0.0], 4).unwrap();
+        dtrain.set_labels(&[0.0, 1.0, 0.0, 1.0]).unwrap();
+        dtrain.set_feature_names(&["a", "b"]).unwrap();
+        dtrain.set_feature_types(&["q", "int"]).unwrap();
+        let params = parameters::TrainingParametersBuilder::default()
+            .dtrain(&dtrain)
+            .boost_rounds(1)
+            .build()
+            .unwrap();
+        let booster = Booster::train(&params).unwrap();
+        assert_eq!(booster.get_feature_names().unwrap(), ["a", "b"]);
+        assert_eq!(booster.get_feature_info("feature_type").unwrap(), ["q", "int"]);
     }
 
     #[test]

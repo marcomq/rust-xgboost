@@ -27,6 +27,9 @@ fn main() {
     let wrapper_h = xgb_root.join("include").join("xgboost").join("c_api.h");
     let bindings = bindgen::Builder::default()
         .header(wrapper_h.to_string_lossy())
+        // Only the C API: libc types like `_IO_FILE` break layout tests when libclang mis-parses them.
+        .allowlist_function("XG.*")
+        .allowlist_type("bst_.*|.*Handle")
         .clang_arg(format!("-I{}", xgb_root.join("include").display()))
         .clang_arg(format!("-I{}", xgb_root.join("dmlc-core").join("include").display()));
 
