@@ -18,6 +18,9 @@ log = "0.4"
 tempfile = "3.15"
 indexmap = "2.7"
 
+[dev-dependencies]
+serde_json = "1"
+
 [features]
 use_prebuilt_xgb = ["xgboost-sys/use_prebuilt_xgb"]
 local_build = ["xgboost-sys/local_build"]

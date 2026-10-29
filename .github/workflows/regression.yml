@@ -1,0 +1,67 @@
+name: Regression
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      baseline:
+        description: "Branch, tag or SHA to compare performance against"
+        required: false
+        default: master
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_TARGET_DIR: ${{ github.workspace }}/target
+  # Shared runners are noisy.
+  XGB_PERF_TOLERANCE: "1.5"
+
+jobs:
+  regression:
+    name: regression (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      COMPARE: ${{ github.event_name != 'push' }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: head
+          submodules: recursive
+
+      # Performance is only comparable on the same runner, so the baseline is measured here as well.
+      - uses: actions/checkout@v4
+        if: env.COMPARE == 'true'
+        with:
+          path: baseline
+          ref: ${{ github.event.pull_request.base.sha || inputs.baseline }}
+          submodules: recursive
+
+      - name: Install dependencies
+        if: runner.os == 'macOS'
+        run: brew install libomp
+
+      - name: Golden scores
+        working-directory: head
+        run: cargo test --release --test regression -- --nocapture
+
+      - name: Record performance baseline
+        if: env.COMPARE == 'true'
+        working-directory: baseline
+        run: |
+          # Same test code and same golden models on both sides, only the library differs.
+          rm -rf tests/golden && cp -R ../head/tests/golden tests/golden
+          cp ../head/tests/regression.rs tests/regression.rs
+          grep -q '^serde_json' Cargo.toml || cargo add --dev serde_json@1
+          XGB_BLESS_PERF=1 cargo test --release --test regression -- --ignored --nocapture
+          cp tests/golden/perf_*.txt ../head/tests/golden/
+
+      - name: Compare latency and throughput
+        if: env.COMPARE == 'true'
+        working-directory: head
+        run: cargo test --release --test regression -- --ignored --nocapture

@@ -1,0 +1,9 @@
+auc=0.928052206292706
+gradient_booster=gbtree
+label_1_rate_train=0.054875
+logloss=0.14090822136053574
+num_class=0
+num_parallel_tree=1
+objective=binary:logistic
+trees=100
+version=[3,0,0]
