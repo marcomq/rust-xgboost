@@ -13,6 +13,13 @@ Rust bindings for the [XGBoost](https://xgboost.ai) gradient boosting library.
 
 Creates a shared library and uses Ninja instead of makefiles as generator.
 
+## Disclaimers
+
+- **This crate does not follow semver.** The first two version numbers always match the
+  XGBoost library version it is built against (e.g. `3.0.x` uses XGBoost 3.0). The last
+  number is this crate's own release counter, and any release may contain breaking API
+  changes. Pin an exact version (e.g. `xgb = "=3.0.7"`) if you need stability.
+
 ## Requirements
 
 It is highly recommended to use the `use_prebuilt_xgb` feature, which is enabled by default.

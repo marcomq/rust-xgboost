@@ -1,6 +1,8 @@
 name: Publish
 
 on:
+  release:
+    types: [published]
   workflow_dispatch:
 
 jobs:
@@ -15,6 +17,16 @@ jobs:
         with:
           submodules: recursive
           persist-credentials: false
+      - name: Check release tag matches the xgb version
+        if: github.event_name == 'release'
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "xgb") | .version')
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::Release tag $TAG does not match xgb version v$version in Cargo.toml"
+            exit 1
+          fi
       - uses: rust-lang/crates-io-auth-action@v1
         id: auth
       - name: Publish xgboost_lib-sys, then xgb
