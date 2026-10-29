@@ -9,6 +9,21 @@ static KEY_LABEL: &str = "label";
 static KEY_WEIGHT: &str = "weight";
 static KEY_BASE_MARGIN: &str = "base_margin";
 
+const USIZE_TYPESTR: &str = if cfg!(target_pointer_width = "64") { "<u8" } else { "<u4" };
+const SPARSE_CONFIG: &str = r#"{"missing": NaN}"#;
+
+/// JSON-encoded `__array_interface__` describing `data`, as XGBoost's array-based constructors expect.
+/// The pointer is borrowed, so `data` must outlive the call it is passed to.
+fn array_interface<T>(data: &[T], typestr: &str) -> ffi::CString {
+    let json = format!(
+        r#"{{"data":[{},true],"shape":[{}],"strides":null,"typestr":"{}","version":3}}"#,
+        data.as_ptr() as usize,
+        data.len(),
+        typestr
+    );
+    ffi::CString::new(json).expect("array interface JSON has no NUL bytes")
+}
+
 /// Data matrix used throughout XGBoost for training/predicting [`Booster`](struct.Booster.html) models.
 ///
 /// It's used as a container for both features (i.e. a row for every instance), and an optional true label for that
@@ -131,15 +146,16 @@ impl DMatrix {
     pub fn from_csr(indptr: &[usize], indices: &[usize], data: &[f32], num_cols: Option<usize>) -> XGBResult<Self> {
         assert_eq!(indices.len(), data.len());
         let mut handle = ptr::null_mut();
-        let indices: Vec<u32> = indices.iter().map(|x| *x as u32).collect();
         let num_cols = num_cols.unwrap_or(0); // infer from data if 0
-        xgb_call!(xgboost_sys::XGDMatrixCreateFromCSREx(
+        let config = ffi::CString::new(SPARSE_CONFIG).unwrap();
+        let (indptr, indices) = (array_interface(indptr, USIZE_TYPESTR), array_interface(indices, USIZE_TYPESTR));
+        let data = array_interface(data, "<f4");
+        xgb_call!(xgboost_sys::XGDMatrixCreateFromCSR(
             indptr.as_ptr(),
             indices.as_ptr(),
             data.as_ptr(),
-            indptr.len(),
-            data.len(),
-            num_cols,
+            num_cols as xgboost_sys::bst_ulong,
+            config.as_ptr(),
             &mut handle
         ))?;
         DMatrix::new(handle)
@@ -156,15 +172,16 @@ impl DMatrix {
     pub fn from_csc(indptr: &[usize], indices: &[usize], data: &[f32], num_rows: Option<usize>) -> XGBResult<Self> {
         assert_eq!(indices.len(), data.len());
         let mut handle = ptr::null_mut();
-        let indices: Vec<u32> = indices.iter().map(|x| *x as u32).collect();
         let num_rows = num_rows.unwrap_or(0); // infer from data if 0
-        xgb_call!(xgboost_sys::XGDMatrixCreateFromCSCEx(
+        let config = ffi::CString::new(SPARSE_CONFIG).unwrap();
+        let (indptr, indices) = (array_interface(indptr, USIZE_TYPESTR), array_interface(indices, USIZE_TYPESTR));
+        let data = array_interface(data, "<f4");
+        xgb_call!(xgboost_sys::XGDMatrixCreateFromCSC(
             indptr.as_ptr(),
             indices.as_ptr(),
             data.as_ptr(),
-            indptr.len(),
-            data.len(),
-            num_rows,
+            num_rows as xgboost_sys::bst_ulong,
+            config.as_ptr(),
             &mut handle
         ))?;
         DMatrix::new(handle)
@@ -203,8 +220,14 @@ impl DMatrix {
     pub fn load_binary<P: AsRef<Path>>(path: P) -> XGBResult<Self> {
         debug!("Loading DMatrix from: {}", path.as_ref().display());
         let mut handle = ptr::null_mut();
-        let fname = crate::path_to_c_str(path);
-        xgb_call!(xgboost_sys::XGDMatrixCreateFromFile(fname.as_ptr(), 1, &mut handle)).unwrap();
+        let path = path
+            .as_ref()
+            .to_str()
+            .ok_or_else(|| XGBError::new("DMatrix path is not valid UTF-8"))?;
+        let path = path.replace('\\', "\\\\").replace('"', "\\\"");
+        let config = ffi::CString::new(format!(r#"{{"uri": "{path}", "silent": 1}}"#))
+            .map_err(|e| XGBError::new(e.to_string()))?;
+        xgb_call!(xgboost_sys::XGDMatrixCreateFromURI(config.as_ptr(), &mut handle))?;
         DMatrix::new(handle)
     }
 

@@ -13,6 +13,10 @@ exclude = [
     "lib/*",
 ]
 
+[lib]
+# The bindings carry XGBoost's C doc comments, whose indented blocks are not Rust examples.
+doctest = false
+
 [dependencies]
 libc = "0.2"
 

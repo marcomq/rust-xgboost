@@ -10,12 +10,11 @@ mod tests {
 
     #[test]
     fn read_matrix() {
-        let dmat_train = "xgboost/demo/data/agaricus.txt.train";
+        let config = r#"{"uri": "xgboost/demo/data/agaricus.txt.train?format=libsvm&indexing_mode=1"}"#;
 
-        let silent = 0;
         let mut handle = std::ptr::null_mut();
-        let fname = std::ffi::CString::new(dmat_train).unwrap();
-        let ret_val = unsafe { XGDMatrixCreateFromFile(fname.as_ptr(), silent, &mut handle) };
+        let config = std::ffi::CString::new(config).unwrap();
+        let ret_val = unsafe { XGDMatrixCreateFromURI(config.as_ptr(), &mut handle) };
         assert_eq!(ret_val, 0);
 
         let mut num_rows = 0;
