@@ -243,6 +243,13 @@ impl Booster {
         Ok(bst)
     }
 
+    /// A new Booster holding the boosting rounds `begin..end` of this one, e.g. `0..best + 1` after early stopping.
+    pub fn slice(&self, begin: i32, end: i32) -> XGBResult<Booster> {
+        let mut handle = ptr::null_mut();
+        xgb_call!(xgboost_sys::XGBoosterSlice(self.handle, begin, end, 1, &mut handle))?;
+        Ok(Booster { handle })
+    }
+
     /// Update this Booster's parameters.
     pub fn set_params(&mut self, p: &BoosterParameters) -> XGBResult<()> {
         for (key, value) in p.as_string_pairs() {
