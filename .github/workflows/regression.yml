@@ -54,8 +54,11 @@ jobs:
         working-directory: head
         run: cargo test --release --test regression -- --nocapture
 
+      # A baseline that does not build (e.g. a bug this PR fixes) is not the PR's fault, so only the comparison is skipped.
       - name: Record performance baseline
+        id: baseline
         if: env.COMPARE == 'true'
+        continue-on-error: true
         working-directory: baseline
         run: |
           # Same test code and same golden models on both sides, only the library differs.
@@ -65,7 +68,11 @@ jobs:
           XGB_BLESS_PERF=1 cargo test --release --test regression -- --ignored --nocapture
           cp tests/golden/perf_*.txt ../head/tests/golden/
 
+      - name: Baseline unavailable
+        if: env.COMPARE == 'true' && steps.baseline.outcome == 'failure'
+        run: echo "::warning::The baseline did not build or run, so latency and throughput were not compared."
+
       - name: Compare latency and throughput
-        if: env.COMPARE == 'true'
+        if: env.COMPARE == 'true' && steps.baseline.outcome == 'success'
         working-directory: head
         run: cargo test --release --test regression -- --ignored --nocapture
