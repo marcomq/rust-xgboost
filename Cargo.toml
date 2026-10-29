@@ -17,11 +17,11 @@ edition = "2024"
 # download AND the cmake source build. Feature selection must flow only
 # through this crate's feature list below.
 xgboost-sys = { package = "xgboost_lib-sys", path = "xgboost-sys", version = "3.3.0", default-features = false }
-libc = "0.2.189"
+libc = "0.2.191"
 derive_builder = "0.20.2"
-log = "0.4.33"
+log = "0.4.34"
 tempfile = "3.27.0"
-indexmap = "2.14.0"
+indexmap = "2.14.2"
 
 [features]
 use_prebuilt_xgb = ["xgboost-sys/use_prebuilt_xgb"]
