@@ -203,41 +203,51 @@ fn main() {
         );
     }
 
+    // CMake's SOVERSION; the name the loader looks up embeds it (see `loader_name`).
+    let lib_major = bundled_version.split('.').next().unwrap().to_owned();
+
     #[cfg(feature = "use_prebuilt_xgb")]
     {
-        for var in ["XGBOOST_LIB_DIR", "XGBOOST_LIB_URL"] {
+        // Printing any rerun-if directive replaces Cargo's default of rerunning
+        // on every package change, so name everything this path reads: the
+        // headers bindgen consumes and the env vars that choose the library.
+        println!("cargo:rerun-if-changed={}", xgb_root.join("include").display());
+        for var in [
+            "XGBOOST_LIB_DIR",
+            "XGBOOST_LIB_URL",
+            "XGB_ALLOW_LEGACY_PREBUILT",
+            "XGB_REQUIRE_CHECKSUMS",
+            "HOMEBREW_PREFIX",
+        ] {
             println!("cargo:rerun-if-env-changed={var}");
         }
+
+        // (release asset platform, files to fetch); the first file is the
+        // runtime library.
+        let prebuilt: Option<(&str, [&str; 2])> = if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+            Some(("mac_arm64", ["libxgboost.dylib", "libdmlc.a"]))
+        } else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
+            Some(("linux_arm64", ["libxgboost.so", "libdmlc.a"]))
+        } else if cfg!(target_os = "linux") {
+            Some(("linux_amd64", ["libxgboost.so", "libdmlc.a"]))
+        } else if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+            Some(("win_amd64", ["xgboost.dll", "xgboost.lib"]))
+        } else {
+            None
+        };
 
         if let Ok(xgboost_lib_dir) = std::env::var("XGBOOST_LIB_DIR") {
             println!("cargo:rustc-link-search=native={}", xgboost_lib_dir);
         } else {
             let deps_path = dunce::canonicalize(Path::new(&format!("{}/../../../deps", out_dir))).unwrap();
-            let deps_path = deps_path.to_string_lossy();
-            println!("cargo:rustc-link-search=native={}", deps_path);
-            if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-                if !std::fs::exists(format!("{deps_path}/libxgboost.dylib")).unwrap() {
-                    fetch_lib("mac_arm64", "libxgboost.dylib", &deps_path).unwrap();
-                    fetch_lib("mac_arm64", "libdmlc.a", &deps_path).unwrap();
+            println!("cargo:rustc-link-search=native={}", deps_path.display());
+            if let Some((platform, files)) = prebuilt {
+                for file in files {
+                    fetch_lib(platform, file, &deps_path).unwrap();
                 }
-                stage_lib_next_to_exe(Path::new(&format!("{deps_path}/libxgboost.dylib")), &out_dir);
-            } else if cfg!(target_os = "linux") {
-                let target_dir = if cfg!(target_arch = "aarch64") {
-                    "linux_arm64"
-                } else {
-                    "linux_amd64"
-                };
-                if !std::fs::exists(format!("{deps_path}/libxgboost.so")).unwrap() {
-                    fetch_lib(target_dir, "libxgboost.so", &deps_path).unwrap();
-                    fetch_lib(target_dir, "libdmlc.a", &deps_path).unwrap();
-                }
-                stage_lib_next_to_exe(Path::new(&format!("{deps_path}/libxgboost.so")), &out_dir);
-            } else if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
-                if !std::fs::exists(format!("{deps_path}/xgboost.dll")).unwrap() {
-                    fetch_lib("win_amd64", "xgboost.dll", &deps_path).unwrap();
-                    fetch_lib("win_amd64", "xgboost.lib", &deps_path).unwrap();
-                }
-                stage_lib_next_to_exe(Path::new(&format!("{deps_path}/xgboost.dll")), &out_dir);
+                // Also what `cargo run`/`cargo test` load: the profile dir is on
+                // their loader path, and deps holds only the linker's name.
+                stage_lib_next_to_exe(&deps_path.join(files[0]), &out_dir, &lib_major);
             } else {
                 if let Ok(homebrew_path) = std::env::var("HOMEBREW_PREFIX") {
                     let xgboost_lib_dir = format!("{}/opt/xgboost/lib", &homebrew_path);
@@ -372,7 +382,7 @@ fn main() {
             dst.join("lib64").join(lib_file),
         ];
         match candidates.iter().find(|p| p.exists()) {
-            Some(src) => stage_lib_next_to_exe(src, &out_dir),
+            Some(src) => stage_lib_next_to_exe(src, &out_dir, &lib_major),
             None => println!(
                 "cargo:warning=built {lib_file} not found under {} — cannot stage it next to the executables",
                 dst.display()
@@ -412,20 +422,19 @@ fn main() {
 /// rpath, and Cargo does not propagate link-args from dependency build
 /// scripts, so the binary crate must add that itself — see "Running binaries
 /// outside cargo run" in the README.
-fn stage_lib_next_to_exe(lib_src: &Path, out_dir: &str) {
-    let lib_name = lib_src.file_name().unwrap();
+fn stage_lib_next_to_exe(lib_src: &Path, out_dir: &str, major: &str) {
     // OUT_DIR = target/<profile>/build/<crate>-<hash>/out → ../../.. = profile root
     let profile_dir = match dunce::canonicalize(Path::new(&format!("{}/../../..", out_dir))) {
         Ok(dir) => dir,
         Err(e) => {
             println!(
                 "cargo:warning=could not resolve profile dir to stage {}: {e}",
-                lib_name.display()
+                lib_src.display()
             );
             return;
         }
     };
-    if let Err(e) = std::fs::copy(lib_src, profile_dir.join(lib_name)) {
+    if let Err(e) = stage_lib(lib_src, &profile_dir, major) {
         // Non-fatal: a running executable can hold a lock on the old copy.
         println!(
             "cargo:warning=could not stage {} into {}: {e}",
@@ -433,6 +442,57 @@ fn stage_lib_next_to_exe(lib_src: &Path, out_dir: &str) {
             profile_dir.display()
         );
     }
+}
+
+/// The file name the dynamic loader looks up for `lib_file`.
+///
+/// CMake gives libxgboost a SOVERSION (the major version), so the macOS install
+/// name is `@rpath/libxgboost.<major>.dylib` and the Linux SONAME is
+/// `libxgboost.so.<major>`. A binary records that name, not the unversioned
+/// file `-lxgboost` resolved to, so a directory holding only
+/// `libxgboost.dylib`/`.so` satisfies the linker but not the loader
+/// ("Library not loaded: @rpath/libxgboost.3.dylib"). Windows DLLs carry no
+/// such name.
+fn loader_name(lib_file: &str, major: &str) -> Option<String> {
+    if let Some(stem) = lib_file.strip_suffix(".dylib") {
+        Some(format!("{stem}.{major}.dylib"))
+    } else if lib_file.ends_with(".so") {
+        Some(format!("{lib_file}.{major}"))
+    } else {
+        None
+    }
+}
+
+/// Put `lib_src` in `dir` under its own name (for the linker) and its
+/// [`loader_name`] (for the loader).
+fn stage_lib(lib_src: &Path, dir: &Path, major: &str) -> std::io::Result<()> {
+    let lib_name = lib_src.file_name().unwrap().to_str().unwrap();
+    for name in std::iter::once(lib_name.to_owned()).chain(loader_name(lib_name, major)) {
+        copy_atomic(lib_src, &dir.join(name))?;
+    }
+    Ok(())
+}
+
+/// Copy via a temporary file and a rename, so the destination is never
+/// half-written. Rewriting a dylib in place is not just a torn-read risk:
+/// macOS caches code signatures per file, and a process that later maps the
+/// rewritten file can be killed with "Code Signature Invalid".
+fn copy_atomic(src: &Path, dest: &Path) -> std::io::Result<()> {
+    let tmp = tmp_path(dest);
+    let result = std::fs::copy(src, &tmp).and_then(|_| std::fs::rename(&tmp, dest));
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
+}
+
+/// Sibling of `dest` to stage a write in. Suffixes the whole file name, so
+/// `xgboost.dll` and `xgboost.lib` never share one; the pid keeps concurrent
+/// cargo invocations on the same target dir apart.
+fn tmp_path(dest: &Path) -> PathBuf {
+    let mut name = dest.file_name().unwrap().to_os_string();
+    name.push(format!(".tmp{}", std::process::id()));
+    dest.with_file_name(name)
 }
 
 #[cfg(feature = "use_prebuilt_xgb")]
@@ -450,12 +510,30 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 ///
 /// The asset is verified against [`PREBUILT_SHA256`] when its digest is on
 /// record; see that table for what happens while one is missing.
+///
+/// A copy already in `deps_path` is reused only if its stamp (see `web_copy`)
+/// matches the source and digest this build would download with. `deps` is
+/// shared by every version built in a target dir, so a bare existence check
+/// kept linking the previous version's library after a version bump, and kept
+/// a file truncated by an interrupted build forever.
 #[cfg(feature = "use_prebuilt_xgb")]
-fn fetch_lib(target_dir: &str, file: &str, deps_path: &str) -> Result<()> {
-    let dest = format!("{deps_path}/{file}");
+fn fetch_lib(target_dir: &str, file: &str, deps_path: &Path) -> Result<()> {
+    let dest = deps_path.join(file);
     let expected = expected_sha256(target_dir, file);
+    let release_url = release_base_url();
+    let primary = format!("{release_url}/{target_dir}-{file}");
+    let legacy = format!("{LEGACY_URL}/{target_dir}/{file}");
+    let allow_legacy = env::var("XGB_ALLOW_LEGACY_PREBUILT").is_ok_and(|v| v == "1");
+
+    if let Ok(stamp) = std::fs::read_to_string(stamp_path(&dest)) {
+        let reusable =
+            stamp == stamp_contents(&primary, expected) || (allow_legacy && stamp == stamp_contents(&legacy, None));
+        if reusable && dest.exists() {
+            return Ok(());
+        }
+    }
+
     if expected.is_none() {
-        println!("cargo:rerun-if-env-changed=XGB_REQUIRE_CHECKSUMS");
         if env::var("XGB_REQUIRE_CHECKSUMS").is_ok_and(|v| v == "1") {
             panic!(
                 "no recorded SHA-256 for {target_dir}/{file}, and XGB_REQUIRE_CHECKSUMS=1.\n\
@@ -470,15 +548,12 @@ fn fetch_lib(target_dir: &str, file: &str, deps_path: &str) -> Result<()> {
         );
     }
 
-    let release_url = release_base_url();
-    let primary = format!("{release_url}/{target_dir}-{file}");
     let primary_err = match web_copy(&primary, &dest, expected) {
         Ok(()) => return Ok(()),
         Err(e) => e,
     };
 
-    println!("cargo:rerun-if-env-changed=XGB_ALLOW_LEGACY_PREBUILT");
-    if !env::var("XGB_ALLOW_LEGACY_PREBUILT").is_ok_and(|v| v == "1") {
+    if !allow_legacy {
         panic!(
             "prebuilt asset is unusable: {primary}\n\
              \x20 cause: {primary_err}\n\
@@ -509,16 +584,23 @@ fn fetch_lib(target_dir: &str, file: &str, deps_path: &str) -> Result<()> {
     // Unpinned: the legacy binaries predate PREBUILT_SHA256 and are a different
     // XGBoost version, so there is no digest of this crate's assets to hold
     // them to. The opt-in env var and the warning above are the safeguard.
-    web_copy(&format!("{LEGACY_URL}/{target_dir}/{file}"), &dest, None)
+    web_copy(&legacy, &dest, None)
 }
 
-/// Download `web_src` to `target`, rejecting it unless it hashes to `expected`.
+/// Download `web_src` to `target`, rejecting it unless it hashes to `expected`,
+/// then record both in the stamp file.
 ///
 /// `expected` is `None` only for a source whose contents are not pinned (the
 /// legacy fallback), or while an asset's digest has not been recorded yet.
+///
+/// The stamp is removed first and rewritten only once `target` is complete
+/// and in place, so a stamp vouches for a whole, verified file; a build
+/// interrupted anywhere in between leaves no stamp and re-downloads.
 #[cfg(feature = "use_prebuilt_xgb")]
-fn web_copy(web_src: &str, target: &str, expected: Option<&str>) -> Result<()> {
+fn web_copy(web_src: &str, target: &Path, expected: Option<&str>) -> Result<()> {
     dbg!(&web_src);
+    let stamp = stamp_path(target);
+    let _ = std::fs::remove_file(&stamp);
     // error_for_status is load-bearing: without it a 404 page would be written
     // out as the library file, and the fallback in fetch_lib would never run.
     let resp = reqwest::blocking::get(web_src)?.error_for_status()?;
@@ -536,6 +618,25 @@ fn web_copy(web_src: &str, target: &str, expected: Option<&str>) -> Result<()> {
 
     // Written only once the bytes are known good, so a rejected download never
     // lands on disk where a later build would find it and skip the fetch.
-    std::fs::write(target, &body)?;
+    let tmp = tmp_path(target);
+    if let Err(e) = std::fs::write(&tmp, &body).and_then(|_| std::fs::rename(&tmp, target)) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e.into());
+    }
+    std::fs::write(&stamp, stamp_contents(web_src, expected))?;
     Ok(())
+}
+
+/// What a stamp records: the source URL and the digest the file was held to.
+/// Including the digest means re-pinning an asset also forces a re-download.
+#[cfg(feature = "use_prebuilt_xgb")]
+fn stamp_contents(web_src: &str, expected: Option<&str>) -> String {
+    format!("{web_src}\n{}\n", expected.unwrap_or("unverified"))
+}
+
+#[cfg(feature = "use_prebuilt_xgb")]
+fn stamp_path(target: &Path) -> PathBuf {
+    let mut name = target.file_name().unwrap().to_os_string();
+    name.push(".source");
+    target.with_file_name(name)
 }

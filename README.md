@@ -209,7 +209,10 @@ no such help.
 To support that, the build script stages the shared library
 (`xgboost.dll` / `libxgboost.so` / `libxgboost.dylib`) next to the
 executables in the target profile directory, for both the `local_build` and
-`use_prebuilt_xgb` paths.
+`use_prebuilt_xgb` paths. On Linux/macOS it is also staged under its
+versioned name (`libxgboost.so.3` / `libxgboost.3.dylib`): that is the name a
+linked binary actually asks the loader for, while the unversioned one only
+serves the linker.
 
 On **Windows** that is sufficient — the loader searches the exe's directory.
 
@@ -239,7 +242,9 @@ rustflags = ["-C", "link-arg=-Wl,-rpath,$ORIGIN"]
 rustflags = ["-C", "link-arg=-Wl,-rpath,@loader_path"]
 ```
 
-When deploying, copy the staged library alongside the executable.
+When deploying, copy the staged library alongside the executable — on
+Linux/macOS the versioned file (`libxgboost.so.3` / `libxgboost.3.dylib`) is
+the one that has to be there.
 
 ### Supported Platforms
 
