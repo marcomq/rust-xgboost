@@ -455,10 +455,7 @@ impl Booster {
 
         // We want zero terminated strings
         let c_temp_features: Vec<ffi::CString> = features.iter().map(|s| ffi::CString::new(*s).unwrap()).collect();
-        let mut c_feature_ptr: Vec<*const raw::c_char> = c_temp_features
-            .into_iter()
-            .map(|s| s.into_raw() as *const raw::c_char)
-            .collect();
+        let mut c_feature_ptr: Vec<*const raw::c_char> = c_temp_features.iter().map(|s| s.as_ptr()).collect();
 
         xgb_call!(xgboost_sys::XGBoosterSetStrFeatureInfo(
             self.handle,
