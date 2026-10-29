@@ -328,6 +328,26 @@ impl DMatrix {
         ))
     }
 
+    pub(crate) fn get_str_info(&self, field: &str) -> XGBResult<Vec<String>> {
+        let field = ffi::CString::new(field).unwrap();
+        let mut out_len = 0;
+        let mut out = ptr::null_mut();
+        xgb_call!(xgboost_sys::XGDMatrixGetStrFeatureInfo(
+            self.handle,
+            field.as_ptr(),
+            &mut out_len,
+            &mut out
+        ))?;
+        if out_len == 0 {
+            return Ok(Vec::new());
+        }
+        let ptrs = unsafe { slice::from_raw_parts(out, out_len as usize) };
+        Ok(ptrs
+            .iter()
+            .map(|p| unsafe { ffi::CStr::from_ptr(*p).to_string_lossy().into_owned() })
+            .collect())
+    }
+
     fn get_float_info(&self, field: &str) -> XGBResult<&[f32]> {
         let field = ffi::CString::new(field).unwrap();
         let mut out_len = 0;

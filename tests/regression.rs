@@ -202,8 +202,14 @@ fn stored_scores(case: Case, all: &[f32]) -> Vec<f32> {
     stored_rows().flat_map(|i| all[i * outputs..(i + 1) * outputs].iter().copied()).collect()
 }
 
-fn score_sum(scores: &[f32]) -> f64 {
-    scores.iter().map(|&s| s as f64).sum()
+// Weighted by class: plain multiclass sums are always the row count, since each row's probabilities add up to 1.
+fn score_sum(case: Case, scores: &[f32]) -> f64 {
+    let outputs = case.outputs_per_row();
+    scores
+        .iter()
+        .enumerate()
+        .map(|(i, &s)| s as f64 * (i % outputs + 1) as f64)
+        .sum()
 }
 
 fn train_model(case: Case) -> Booster {
@@ -349,7 +355,7 @@ fn bless(case: Case) {
         let rate = labels.iter().filter(|&&y| y == class as f32).count() as f32 / labels.len() as f32;
         metrics.insert(format!("label_{class}_rate_train"), rate.to_string());
     }
-    metrics.insert("score_sum".to_owned(), score_sum(&predictions).to_string());
+    metrics.insert("score_sum".to_owned(), score_sum(case, &predictions).to_string());
     metrics.insert(
         "trees".to_owned(),
         booster.dump_model_vec(false).unwrap().len().to_string(),
@@ -439,9 +445,9 @@ fn assert_matches_golden(case: Case, actual: &[f32], context: &str) {
     let golden = golden(case);
     assert_close(&stored_scores(case, actual), &golden.predictions, context);
     let expected: f64 = golden.metrics["score_sum"].parse().unwrap();
-    let diff = (score_sum(actual) - expected).abs();
+    let diff = (score_sum(case, actual) - expected).abs();
     assert!(
-        diff <= actual.len() as f64 * PREDICTION_TOLERANCE as f64,
+        diff <= (actual.len() * case.outputs_per_row()) as f64 * PREDICTION_TOLERANCE as f64,
         "{context}: sum of all {} scores moved by {diff}",
         actual.len()
     );

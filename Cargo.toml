@@ -9,7 +9,7 @@ description = "Machine learning using XGBoost"
 documentation = "https://docs.rs/xgboost_lib"
 readme = "README.md"
 edition = "2021"
-exclude = ["tests/golden"]
+exclude = ["tests/golden", "tests/regression.rs"]
 
 [dependencies]
 xgboost-sys = { package = "xgboost_lib-sys", path = "xgboost-sys", version = "3.0.6" }
