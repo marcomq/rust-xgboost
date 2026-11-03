@@ -58,10 +58,17 @@ fn main() {
         if let Ok(xgboost_lib_dir) = std::env::var("XGBOOST_LIB_DIR") {
             println!("cargo:rustc-link-search=native={}", xgboost_lib_dir);
         } else if let Some(platform) = prebuilt_platform() {
-            let deps_path = dunce::canonicalize(Path::new(&format!("{}/../../../deps", out_dir))).unwrap();
-            println!("cargo:rustc-link-search=native={}", deps_path.display());
+            // The library is installed into this build script's own output directory. Cargo
+            // documents that `rustc-link-search` paths within `OUT_DIR` are also added to the
+            // dynamic library search path of `cargo run`/`test`/`bench`, whatever directory
+            // layout cargo uses.
+            //
+            // Previously, we installed to `target/<profile>/deps`, located as `OUT_DIR/../../../deps`,
+            // however cargo changed the directory layout in 1.100, which broke this approach.
+            let lib_dir: &Path = &out_path;
+            println!("cargo:rustc-link-search=native={}", lib_dir.display());
             for artifact in prebuilt_artifacts(platform) {
-                if let Err(e) = provide_artifact(platform, artifact, &deps_path) {
+                if let Err(e) = provide_artifact(platform, artifact, &lib_dir) {
                     if artifact.required {
                         panic!(
                             "Could not obtain prebuilt {}/{}: {e}\n\
@@ -218,14 +225,14 @@ fn prebuilt_artifacts(platform: &str) -> &'static [Artifact] {
     }
 }
 
-/// Place `artifact` in `deps_path`, preferring sources that need no network at all.
+/// Place `artifact` in `lib_dir`, preferring sources that need no network at all.
 ///
-/// Order: an already-valid copy in `deps_path`, then the local directories from
+/// Order: an already-valid copy in `lib_dir`, then the local directories from
 /// [`local_lib_dirs`], then the mirrors. Anything that fails its checksum is discarded and the
 /// next source is tried, so a bad file can never persist across builds.
 #[cfg(feature = "use_prebuilt_xgb")]
-fn provide_artifact(platform: &str, artifact: &Artifact, deps_path: &Path) -> Result<()> {
-    let dest = deps_path.join(artifact.file);
+fn provide_artifact(platform: &str, artifact: &Artifact, lib_dir: &Path) -> Result<()> {
+    let dest = lib_dir.join(artifact.file);
 
     if dest.exists() {
         if let Ok(bytes) = std::fs::read(&dest) {
@@ -279,7 +286,7 @@ fn provide_artifact(platform: &str, artifact: &Artifact, deps_path: &Path) -> Re
     Err(format!("all sources failed:\n{}", errors.join("\n")).into())
 }
 
-/// Put verified bytes in place and make the result loadable from `deps`.
+/// Put verified bytes in place and make the result loadable
 ///
 /// macOS copies a dependency's own `install_name` into every binary linking it, and the prebuilt
 /// dylibs carry an absolute Homebrew path. Without this rewrite the pinned library is put in place
