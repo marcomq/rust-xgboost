@@ -19,6 +19,7 @@ doctest = false
 
 [dependencies]
 libc = "0.2"
+libloading = { version = "0.8", optional = true }
 
 [build-dependencies]
 bindgen = { version = "0.71" }
@@ -26,9 +27,14 @@ dunce =  { version = "1.0.5" }
 ureq = { version = "3", optional = true }
 sha2 = { version = "0.10", optional = true }
 cmake = { version = "0.1", optional = true }
+syn = { version = "2", features = ["full"], optional = true }
+quote = { version = "1", optional = true }
+proc-macro2 = { version = "1", optional = true }
 
 [features]
 default = ["use_prebuilt_xgb"]
 use_prebuilt_xgb = ["ureq", "sha2"]
 local_build = ["cmake"]
 cuda = []
+# Load the library with dlopen on first use instead of linking it: binaries start without it.
+runtime_load = ["libloading", "syn", "quote", "proc-macro2"]

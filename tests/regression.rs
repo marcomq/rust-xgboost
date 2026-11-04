@@ -194,12 +194,16 @@ fn scoring_rows(case: Case) -> (Vec<f32>, Vec<f32>) {
 
 // The golden file keeps every STORED_ROW_STEP-th holdout row and both edge-case rows.
 fn stored_rows() -> impl Iterator<Item = usize> {
-    (0..TEST_ROWS).step_by(STORED_ROW_STEP).chain([TEST_ROWS, TEST_ROWS + 1])
+    (0..TEST_ROWS)
+        .step_by(STORED_ROW_STEP)
+        .chain([TEST_ROWS, TEST_ROWS + 1])
 }
 
 fn stored_scores(case: Case, all: &[f32]) -> Vec<f32> {
     let outputs = case.outputs_per_row();
-    stored_rows().flat_map(|i| all[i * outputs..(i + 1) * outputs].iter().copied()).collect()
+    stored_rows()
+        .flat_map(|i| all[i * outputs..(i + 1) * outputs].iter().copied())
+        .collect()
 }
 
 // Weighted by class: plain multiclass sums are always the row count, since each row's probabilities add up to 1.

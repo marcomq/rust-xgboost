@@ -297,7 +297,10 @@ impl Booster {
         let mut handle = ptr::null_mut();
         let ret = unsafe { xgboost_sys::XGBoosterSlice(self.handle, begin, end, 1, &mut handle) };
         if ret == -2 {
-            return Err(XGBError::new(format!("Boosting rounds {}..{} are out of bound", begin, end)));
+            return Err(XGBError::new(format!(
+                "Boosting rounds {}..{} are out of bound",
+                begin, end
+            )));
         }
         XGBError::check_return_value(ret)?;
         Ok(Booster {

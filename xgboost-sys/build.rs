@@ -38,9 +38,23 @@ fn main() {
     let bindings = bindings.generate().expect("Unable to generate bindings.");
 
     let out_path = PathBuf::from(&out_dir);
+    #[cfg(not(feature = "runtime_load"))]
     bindings
         .write_to_file(out_path.join("bindings.rs"))
         .expect("Couldn't write bindings.");
+    #[cfg(feature = "runtime_load")]
+    {
+        std::fs::write(out_path.join("bindings.rs"), runtime_shims(&bindings.to_string()))
+            .expect("Couldn't write bindings.");
+        let version_h = xgb_root.join("include").join("xgboost").join("version_config.h");
+        let header = std::fs::read_to_string(&version_h).expect("Unable to read version_config.h.");
+        let major = header
+            .lines()
+            .find_map(|l| l.strip_prefix("#define XGBOOST_VER_MAJOR "))
+            .and_then(|v| v.split_whitespace().next())
+            .expect("XGBOOST_VER_MAJOR missing in version_config.h");
+        println!("cargo:rustc-env=XGBOOST_HEADER_MAJOR={major}");
+    }
 
     if target.contains("apple") {
         println!(
@@ -57,9 +71,11 @@ fn main() {
 
         if let Ok(xgboost_lib_dir) = std::env::var("XGBOOST_LIB_DIR") {
             println!("cargo:rustc-link-search=native={}", xgboost_lib_dir);
+            println!("cargo:rustc-env=XGBOOST_BUILD_LIB_DIR={}", xgboost_lib_dir);
         } else if let Some(platform) = prebuilt_platform() {
             let deps_path = dunce::canonicalize(Path::new(&format!("{}/../../../deps", out_dir))).unwrap();
             println!("cargo:rustc-link-search=native={}", deps_path.display());
+            println!("cargo:rustc-env=XGBOOST_BUILD_LIB_DIR={}", deps_path.display());
             for artifact in prebuilt_artifacts(platform) {
                 if let Err(e) = provide_artifact(platform, artifact, &deps_path) {
                     if artifact.required {
@@ -77,6 +93,7 @@ fn main() {
         } else if let Ok(homebrew_path) = std::env::var("HOMEBREW_PREFIX") {
             let xgboost_lib_dir = format!("{}/opt/xgboost/lib", &homebrew_path);
             println!("cargo:rustc-link-search=native={}", xgboost_lib_dir);
+            println!("cargo:rustc-env=XGBOOST_BUILD_LIB_DIR={}", xgboost_lib_dir);
         } else {
             panic!("Please set $XGBOOST_LIB_DIR")
         }
@@ -102,7 +119,14 @@ fn main() {
         println!("cargo:rustc-link-search=native={}", dst.display());
         println!("cargo:rustc-link-search=native={}", dst.join("lib").display());
         println!("cargo:rustc-link-search=native={}", dst.join("lib64").display());
-        println!("cargo:rustc-link-lib=static=dmlc");
+        println!("cargo:rustc-env=XGBOOST_BUILD_LIB_DIR={}", dst.join("lib").display());
+        if cfg!(not(feature = "runtime_load")) {
+            println!("cargo:rustc-link-lib=static=dmlc");
+        }
+    }
+
+    if cfg!(feature = "runtime_load") {
+        return;
     }
 
     // link to appropriate C++ lib
@@ -128,6 +152,67 @@ fn main() {
 }
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
+// Replaces each `extern "C"` declaration with a function of the same signature that resolves the
+// symbol at first use. Without the library, calls fail like XGBoost does: -1 and a message in
+// `XGBGetLastError`.
+#[cfg(feature = "runtime_load")]
+fn runtime_shims(bindings: &str) -> String {
+    use quote::quote;
+    let file = syn::parse_file(bindings).expect("Unable to parse bindings.");
+    let mut out = proc_macro2::TokenStream::new();
+    for item in file.items {
+        let syn::Item::ForeignMod(block) = item else {
+            out.extend(quote!(#item));
+            continue;
+        };
+        for f in block.items {
+            let syn::ForeignItem::Fn(f) = f else {
+                panic!("unsupported foreign item in bindings");
+            };
+            let (attrs, name, ret) = (&f.attrs, &f.sig.ident, &f.sig.output);
+            let (pats, tys): (Vec<_>, Vec<_>) = f
+                .sig
+                .inputs
+                .iter()
+                .map(|arg| match arg {
+                    syn::FnArg::Typed(p) => (&p.pat, &p.ty),
+                    syn::FnArg::Receiver(_) => unreachable!(),
+                })
+                .unzip();
+            let symbol = syn::LitByteStr::new(format!("{name}\0").as_bytes(), name.span());
+            let label = name.to_string();
+            let fallback = match ret {
+                _ if label == "XGBGetLastError" => quote!(crate::runtime::pending_error().unwrap()),
+                syn::ReturnType::Default => quote!(()),
+                syn::ReturnType::Type(_, ty) => match &**ty {
+                    syn::Type::Ptr(p) if p.mutability.is_some() => quote!(::std::ptr::null_mut()),
+                    syn::Type::Ptr(_) => quote!(::std::ptr::null()),
+                    _ => quote!(-1),
+                },
+            };
+            let pending = (label == "XGBGetLastError").then(|| {
+                quote!(if let Some(e) = crate::runtime::pending_error() { return e; })
+            });
+            out.extend(quote! {
+                #(#attrs)*
+                pub unsafe fn #name(#(#pats: #tys),*) #ret {
+                    type F = unsafe extern "C" fn(#(#tys),*) #ret;
+                    static SYMBOL: ::std::sync::OnceLock<Option<F>> = ::std::sync::OnceLock::new();
+                    #pending
+                    match *SYMBOL.get_or_init(|| crate::runtime::symbol::<F>(#symbol)) {
+                        Some(f) => f(#(#pats),*),
+                        None => {
+                            crate::runtime::fail(#label);
+                            #fallback
+                        }
+                    }
+                }
+            });
+        }
+    }
+    out.to_string()
+}
 
 /// One prebuilt file, pinned by content hash so a truncated or error-page download can never be
 /// mistaken for the real library.
