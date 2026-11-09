@@ -1,5 +1,15 @@
 [package]
 name = "xgb"
+# Stays 3.3.0 on purpose (2026-11-09): gradientlss-rs requires `xgb = "3.3.0"`
+# and SportsBetting's `[patch.crates-io]` only applies while that requirement
+# matches this version — a bump here must be mirrored there in the same step.
+# TODO: merge upstream marcomq/rust-xgboost 3.4.1 (bundled XGBoost 3.4.1,
+# `runtime_load`, DMatrix perf pass; its save_buffer NUL fix and feature-info
+# leak fix are already here). Divergence as of 11-09: 24 upstream commits vs 43
+# fork-only, merge-base 86ad557, conflicts in 14 files incl. the prebuilt libs
+# and the xgboost-sys/xgboost submodule (ours carries serving-hotpath C++
+# patches that must be re-applied on 3.4.1 and the prebuilt assets rebuilt).
+# Then set this to 3.4.1 and gradientlss's requirement with it.
 version = "3.3.0"
 authors = ["Dave Challis <dave@suicas.net>", "Marco Mengelkoch", "Felix Agene <agene001@umn.edu>"]
 license = "MIT"
