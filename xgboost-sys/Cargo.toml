@@ -23,7 +23,6 @@ libloading = { version = "0.8", optional = true }
 
 [build-dependencies]
 bindgen = { version = "0.71" }
-dunce =  { version = "1.0.5" }
 ureq = { version = "3", optional = true }
 sha2 = { version = "0.10", optional = true }
 cmake = { version = "0.1", optional = true }

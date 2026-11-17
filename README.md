@@ -120,8 +120,8 @@ This is using a prebuilt shared library in xboost-sys/lib by default. You can al
 The library is looked up in the following order, so a build only reaches the network when it has to:
 
 1. `$XGBOOST_LIB_DIR` - link against an existing directory, nothing is copied or downloaded
-2. `target/<profile>/deps/` - the copy an earlier build of this crate already put in place, reused
-   only if it still matches the pinned checksum
+2. `target/` - in the build script's own output directory - the copy an earlier build of this
+   crate already put in place, reused only if it still matches the pinned checksum
 3. `$XGBOOST_LIB_CACHE`, defaulting to `$CARGO_HOME/xgboost-prebuilt/<tag>` - a download cache that
    survives `cargo clean` and is shared between checkouts
 4. `xgboost-sys/lib/<platform>/` - the copies in this repository, present in a git checkout but not
