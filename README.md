@@ -149,6 +149,13 @@ On macOS the prebuilt dylib is stamped with an absolute Homebrew install name. T
 it to the copy it just verified and re-signs it ad-hoc, so the pinned library is the one loaded at
 runtime rather than whatever Homebrew happens to have installed.
 
+On Windows and Linux the library stays in the build script's output directory
+(`target/<profile>/build/xgboost-sys-<hash>/out`). `cargo run`, `cargo test` and `cargo bench` add
+that directory to the library search path automatically. When starting a built executable directly,
+put that directory on `PATH` (Windows) or `LD_LIBRARY_PATH` (Linux), or copy `xgboost.dll` /
+`libxgboost.so` next to the executable. Alternatively, set `$XGBOOST_LIB_DIR` to a directory that is
+already on the search path.
+
 If you prefer to use xgboost from homebrew, which may have GPU support, your can for example define
 ```
 XGBOOST_LIB_DIR=${HOMEBREW_PREFIX}/opt/xgboost/lib
