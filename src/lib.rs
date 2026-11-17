@@ -81,6 +81,8 @@ mod booster;
 pub use booster::{Booster, FeatureMap, FeatureType, PredictConfig, PredictType};
 pub mod parameters;
 use std::{ffi, path::Path};
+#[cfg(feature = "runtime_load")]
+pub use xgboost_sys::{available as library_available, load as load_library};
 
 #[cfg(not(target_os = "windows"))]
 pub fn path_to_c_str<P: AsRef<Path>>(path: P) -> ffi::CString {
